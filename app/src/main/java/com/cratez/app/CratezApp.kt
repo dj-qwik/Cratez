@@ -36,6 +36,7 @@ class CratezApp : Application() {
         Cloud.schedule(this)
         dupes = DupeScanner(this)
         player = PlayerConnection(this)
+        com.cratez.app.viz.VizController.init(this)
         scope.launch {
             settings.ensureIdentity()
             engine.resumeInterrupted()

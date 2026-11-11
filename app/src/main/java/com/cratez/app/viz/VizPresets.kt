@@ -1,6 +1,11 @@
 package com.cratez.app.viz
 
+import android.content.Context
+import android.content.SharedPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
+import org.json.JSONArray
+import org.json.JSONObject
+import kotlin.math.pow
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.random.Random
 
@@ -95,10 +100,14 @@ object Viz {
 
 /** Holds what the visualizer is showing; shared by the GL renderer and the Compose controls. */
 object VizController {
+    private var prefs: SharedPreferences? = null
     private val _params = MutableStateFlow(Viz.PRESETS[0].p)
     val params: StateFlow<VizParams> = _params
     private val _presetIndex = MutableStateFlow(0)
+    /** Index into [all]; -1 = unsaved mashup / edits. */
     val presetIndex: StateFlow<Int> = _presetIndex
+    private val _custom = MutableStateFlow<List<VizPreset>>(emptyList())
+    val custom: StateFlow<List<VizPreset>> = _custom
     private val _autoCycle = MutableStateFlow(false)
     val autoCycle: StateFlow<Boolean> = _autoCycle
     private val _cycleSec = MutableStateFlow(30)
@@ -107,23 +116,121 @@ object VizController {
     val cycleOnDrop: StateFlow<Boolean> = _cycleOnDrop
     private val _showInfo = MutableStateFlow(true)
     val showInfo: StateFlow<Boolean> = _showInfo
+    private val _stickKeep = MutableStateFlow(false)
+    /** false = sticks bounce back when released, true = changes stay. */
+    val stickKeep: StateFlow<Boolean> = _stickKeep
+    private val _stickReadout = MutableStateFlow(true)
+    val stickReadout: StateFlow<Boolean> = _stickReadout
     @Volatile var lastChange = System.currentTimeMillis()
 
+    // ---- Thumbsticks: targets set by touch (-1..1, up = +y), smoothed values owned by the renderer ----
+    @Volatile var lx = 0f; @Volatile var ly = 0f; @Volatile var rx = 0f; @Volatile var ry = 0f
+    @Volatile var slx = 0f; @Volatile var sly = 0f; @Volatile var srx = 0f; @Volatile var sry = 0f
+
+    fun all(): List<VizPreset> = Viz.PRESETS + _custom.value
+    fun isCustom(i: Int) = i >= Viz.PRESETS.size
+
+    fun init(ctx: Context) {
+        if (prefs != null) return
+        val sp = ctx.getSharedPreferences("viz", Context.MODE_PRIVATE)
+        prefs = sp
+        _custom.value = runCatching {
+            val arr = JSONArray(sp.getString("custom", "[]"))
+            (0 until arr.length()).map { arr.getJSONObject(it).let { o -> VizPreset(o.getString("name"), fromJson(o.getJSONObject("p"))) } }
+        }.getOrDefault(emptyList())
+        _stickKeep.value = sp.getBoolean("stickKeep", false)
+        _stickReadout.value = sp.getBoolean("stickReadout", true)
+        val last = sp.getInt("last", 0)
+        if (last in all().indices) select(last)
+    }
+
+    /**
+     * Thumbstick mapping. Left stick = ENERGY (x: speed, y: intensity = warp + audio punch + trails).
+     * Right stick = CAMERA (x: spin, y: zoom / fly forward).
+     */
+    fun applySticks(p: VizParams, lx: Float, ly: Float, rx: Float, ry: Float) = p.copy(
+        speed = (p.speed * 2f.pow(lx * 1.6f)).coerceIn(0.05f, 6f),
+        warp = (p.warp * (1f + ly * 1.2f) + ly * 0.5f).coerceIn(-3f, 4f),
+        react = (p.react * (1f + ly * 0.7f)).coerceIn(0f, 3f),
+        decay = (p.decay + ly * 0.035f).coerceIn(0.8f, 0.995f),
+        zoom = (p.zoom + ry * 0.05f).coerceIn(0.9f, 1.15f),
+        rot = (p.rot + rx * 0.025f).coerceIn(-0.06f, 0.06f),
+    )
+
+    fun releaseLeft() {
+        if (_stickKeep.value) { _params.value = applySticks(_params.value, slx, sly, 0f, 0f); slx = 0f; sly = 0f; _presetIndex.value = -1 }
+        lx = 0f; ly = 0f
+    }
+    fun releaseRight() {
+        if (_stickKeep.value) { _params.value = applySticks(_params.value, 0f, 0f, srx, sry); srx = 0f; sry = 0f; _presetIndex.value = -1 }
+        rx = 0f; ry = 0f
+    }
+
     fun select(i: Int) {
-        val n = Viz.PRESETS.size
-        val idx = ((i % n) + n) % n
-        _presetIndex.value = idx; _params.value = Viz.PRESETS[idx].p; lastChange = System.currentTimeMillis()
+        val list = all()
+        val idx = ((i % list.size) + list.size) % list.size
+        _presetIndex.value = idx; _params.value = list[idx].p; lastChange = System.currentTimeMillis()
+        prefs?.edit()?.putInt("last", idx)?.apply()
     }
     fun next() = select(_presetIndex.value + 1)
-    fun prev() = select(_presetIndex.value - 1)
-    fun random() = select(Random.nextInt(Viz.PRESETS.size))
+    fun prev() = select(if (_presetIndex.value < 0) 0 else _presetIndex.value - 1)
+    fun random() = select(Random.nextInt(all().size))
     fun mashup() { _presetIndex.value = -1; _params.value = Viz.mashup(); lastChange = System.currentTimeMillis() }
-    fun reset() { val i = _presetIndex.value; if (i >= 0) _params.value = Viz.PRESETS[i].p }
+    fun reset() { val i = _presetIndex.value; if (i >= 0) _params.value = all()[i].p }
     fun update(f: (VizParams) -> VizParams) { _params.value = f(_params.value) }
     fun setAutoCycle(v: Boolean) { _autoCycle.value = v; lastChange = System.currentTimeMillis() }
     fun setCycleSec(v: Int) { _cycleSec.value = v }
     fun setCycleOnDrop(v: Boolean) { _cycleOnDrop.value = v }
     fun setShowInfo(v: Boolean) { _showInfo.value = v }
+    fun setStickKeep(v: Boolean) { _stickKeep.value = v; prefs?.edit()?.putBoolean("stickKeep", v)?.apply() }
+    fun setStickReadout(v: Boolean) { _stickReadout.value = v; prefs?.edit()?.putBoolean("stickReadout", v)?.apply() }
+
+    /** Saves what's on screen right now (including any thumbstick moves) as a custom preset. */
+    fun saveCustom(name: String) {
+        val n = name.trim().take(28).ifBlank { "My preset ${_custom.value.size + 1}" }
+        val p = applySticks(_params.value, slx, sly, srx, sry)
+        val list = _custom.value.filter { it.name != n } + VizPreset(n, p)
+        _custom.value = list
+        persist()
+        select(Viz.PRESETS.size + list.indexOfFirst { it.name == n })
+    }
+
+    fun deleteCustom(i: Int) {
+        if (!isCustom(i)) return
+        val ci = i - Viz.PRESETS.size
+        _custom.value = _custom.value.filterIndexed { idx, _ -> idx != ci }
+        persist()
+        select(0)
+    }
+
+    private fun persist() {
+        val arr = JSONArray()
+        _custom.value.forEach { arr.put(JSONObject().put("name", it.name).put("p", toJson(it.p))) }
+        prefs?.edit()?.putString("custom", arr.toString())?.apply()
+    }
+
+    private fun toJson(p: VizParams) = JSONObject().apply {
+        put("warpMode", p.warpMode); put("waveMode", p.waveMode); put("palette", p.palette); put("kaleido", p.kaleido); put("mirror", p.mirror)
+        put("zoom", p.zoom.toDouble()); put("rot", p.rot.toDouble()); put("warp", p.warp.toDouble()); put("decay", p.decay.toDouble())
+        put("hueSpeed", p.hueSpeed.toDouble()); put("speed", p.speed.toDouble()); put("react", p.react.toDouble()); put("waveSize", p.waveSize.toDouble())
+        put("thickness", p.thickness.toDouble()); put("glow", p.glow.toDouble()); put("chroma", p.chroma.toDouble()); put("seed", p.seed.toDouble())
+        put("shapeSides", p.shapeSides); put("zoomPulse", p.zoomPulse.toDouble()); put("drift", p.drift.toDouble())
+        put("scanlines", p.scanlines); put("beatFlash", p.beatFlash); put("invertBeat", p.invertBeat); put("particles", p.particles)
+    }
+
+    private fun fromJson(o: JSONObject): VizParams {
+        val d = VizParams()
+        fun f(k: String, def: Float) = o.optDouble(k, def.toDouble()).toFloat()
+        return VizParams(
+            warpMode = o.optInt("warpMode", d.warpMode), waveMode = o.optInt("waveMode", d.waveMode), palette = o.optInt("palette", d.palette),
+            kaleido = o.optInt("kaleido", d.kaleido), mirror = o.optInt("mirror", d.mirror), zoom = f("zoom", d.zoom), rot = f("rot", d.rot),
+            warp = f("warp", d.warp), decay = f("decay", d.decay), hueSpeed = f("hueSpeed", d.hueSpeed), speed = f("speed", d.speed),
+            react = f("react", d.react), waveSize = f("waveSize", d.waveSize), thickness = f("thickness", d.thickness), glow = f("glow", d.glow),
+            chroma = f("chroma", d.chroma), seed = f("seed", d.seed), shapeSides = o.optInt("shapeSides", d.shapeSides),
+            zoomPulse = f("zoomPulse", d.zoomPulse), drift = f("drift", d.drift), scanlines = o.optBoolean("scanlines", d.scanlines),
+            beatFlash = o.optBoolean("beatFlash", d.beatFlash), invertBeat = o.optBoolean("invertBeat", d.invertBeat), particles = o.optBoolean("particles", d.particles),
+        )
+    }
 
     /** Called by the renderer every frame. */
     fun tick(bigDrop: Boolean) {

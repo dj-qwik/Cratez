@@ -79,11 +79,18 @@ class VizRenderer : GLSurfaceView.Renderer {
         val now = System.nanoTime()
         val dt = ((now - last) / 1e9).toFloat().coerceIn(0.001f, 0.1f)
         last = now
+        // Thumbsticks glide toward their targets (and back to centre when released).
+        val ks = 1f - Math.pow(0.0005, dt.toDouble()).toFloat()
+        VizController.slx += (VizController.lx - VizController.slx) * ks
+        VizController.sly += (VizController.ly - VizController.sly) * ks
+        VizController.srx += (VizController.rx - VizController.srx) * ks
+        VizController.sry += (VizController.ry - VizController.sry) * ks
         val p = VizController.params.value
-        time += dt * p.speed
+        val stickP = VizController.applySticks(p, VizController.slx, VizController.sly, VizController.srx, VizController.sry)
+        time += dt * stickP.speed
         val t = time.toFloat()
         AudioTap.analyze(audio)
-        val react = p.react
+        val react = stickP.react
         val bass = 1f + (audio.bassAtt - 1f) * react
         val mid = 1f + (audio.midAtt - 1f) * react
         val treb = 1f + (audio.trebAtt - 1f) * react
@@ -92,6 +99,9 @@ class VizRenderer : GLSurfaceView.Renderer {
 
         val k = 1f - Math.pow(0.02, dt.toDouble()).toFloat()  // ~1.2 s morph
         sZoom += (p.zoom - sZoom) * k; sRot += (p.rot - sRot) * k; sWarp += (p.warp - sWarp) * k; sDecay += (p.decay - sDecay) * k
+        // Sticks act on top of the (morphing) preset values, so they respond instantly.
+        val eff = VizController.applySticks(p.copy(zoom = sZoom, rot = sRot, warp = sWarp, decay = sDecay, speed = p.speed, react = p.react),
+            VizController.slx, VizController.sly, VizController.srx, VizController.sry)
         sGlow += (p.glow - sGlow) * k; sChroma += (p.chroma - sChroma) * k; sSeed += (p.seed - sSeed) * k; sWave += (p.waveSize - sWave) * k
         hue += dt * p.hueSpeed * 0.1f * (0.6f + 0.4f * mid)
 
@@ -102,10 +112,10 @@ class VizRenderer : GLSurfaceView.Renderer {
         glViewport(0, 0, fw, fh)
         glDisable(GL_BLEND)
         glUseProgram(warpProg)
-        val zoom = 1f + (sZoom - 1f) * fps + (bass - 1f) * 0.012f * p.zoomPulse
+        val zoom = 1f + (eff.zoom - 1f) * fps + (bass - 1f) * 0.012f * p.zoomPulse
         u1(warpProg, "uTime", t); u1(warpProg, "uBass", bass); u1(warpProg, "uMid", mid); u1(warpProg, "uTreb", treb); u1(warpProg, "uBeat", beat)
-        u1(warpProg, "uZoom", zoom); u1(warpProg, "uRot", sRot * fps * (0.7f + 0.3f * mid)); u1(warpProg, "uWarp", sWarp)
-        u1(warpProg, "uDecay", Math.pow(sDecay.toDouble(), fps.toDouble()).toFloat()); u1(warpProg, "uAspect", fw.toFloat() / fh)
+        u1(warpProg, "uZoom", zoom); u1(warpProg, "uRot", eff.rot * fps * (0.7f + 0.3f * mid)); u1(warpProg, "uWarp", eff.warp)
+        u1(warpProg, "uDecay", Math.pow(eff.decay.toDouble(), fps.toDouble()).toFloat()); u1(warpProg, "uAspect", fw.toFloat() / fh)
         u1(warpProg, "uMode", p.warpMode.toFloat()); u1(warpProg, "uSeed", sSeed); u1(warpProg, "uHueStep", p.hueSpeed * 0.01f * fps)
         u1(warpProg, "uDrift", p.drift)
         glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, tex[src]); glUniform1i(glGetUniformLocation(warpProg, "uPrev"), 0)

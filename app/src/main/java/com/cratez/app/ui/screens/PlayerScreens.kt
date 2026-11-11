@@ -51,6 +51,16 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.changedToDown
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import kotlin.math.abs
+import kotlin.math.roundToInt
+import kotlin.math.sqrt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
@@ -169,6 +179,27 @@ fun VizScreen(vm: AppViewModel, nav: Nav) {
     var panelOpen by remember { mutableStateOf(false) }
     var lastTouch by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var glView by remember { mutableStateOf<GLSurfaceView?>(null) }
+    val custom by VizController.custom.collectAsState()
+    val allPresets = Viz.PRESETS + custom
+    val showReadout by VizController.stickReadout.collectAsState()
+    var saveOpen by remember { mutableStateOf(false) }
+    var stickText by remember { mutableStateOf("") }
+    var lastStick by remember { mutableLongStateOf(0L) }
+    val stickRadius = with(LocalDensity.current) { 72.dp.toPx() }
+    LaunchedEffect(lastStick) { delay(900); if (System.currentTimeMillis() - lastStick >= 850) stickText = "" }
+    fun describeSticks(): String {
+        val parts = mutableListOf<String>()
+        val c = VizController
+        if (abs(c.lx) > 0.05f || abs(c.ly) > 0.05f) {
+            parts += "SPEED ×" + "%.1f".format(Math.pow(2.0, c.lx * 1.6))
+            parts += "INTENSITY " + (if (c.ly >= 0) "+" else "") + (c.ly * 100).roundToInt() + "%"
+        }
+        if (abs(c.rx) > 0.05f || abs(c.ry) > 0.05f) {
+            parts += "SPIN " + (if (c.rx >= 0) "⟳ " else "⟲ ") + (abs(c.rx) * 100).roundToInt() + "%"
+            parts += (if (c.ry >= 0) "ZOOM IN " else "ZOOM OUT ") + (abs(c.ry) * 100).roundToInt() + "%"
+        }
+        return parts.joinToString("   ")
+    }
 
     // Fullscreen + free rotation while the visualizer is open.
     DisposableEffect(Unit) {
@@ -212,14 +243,55 @@ fun VizScreen(vm: AppViewModel, nav: Nav) {
             onRelease = { it.onPause() },
             modifier = Modifier.fillMaxSize(),
         )
-        // Touch layer: tap toggles controls, double-tap = next preset, long-press = mashup.
-        Box(Modifier.fillMaxSize().combinedClickable(
+        // Touch layer. Invisible thumbsticks: a thumb dragged on the left half = ENERGY stick
+        // (sideways: speed, up/down: intensity); right half = CAMERA stick (sideways: spin, up/down: zoom).
+        // Wherever the thumb lands becomes the stick's centre. Taps still work: tap = controls,
+        // double-tap = next preset, long-press = mashup.
+        Box(Modifier.fillMaxSize().pointerInput(stickRadius) {
+            awaitPointerEventScope {
+                val origins = HashMap<PointerId, Pair<Offset, Boolean>>()
+                val active = HashSet<PointerId>()
+                val slop = viewConfiguration.touchSlop
+                while (true) {
+                    val ev = awaitPointerEvent(PointerEventPass.Initial)
+                    for (c in ev.changes) {
+                        if (c.changedToDown()) origins[c.id] = c.position to (c.position.x < size.width / 2f)
+                        val o = origins[c.id] ?: continue
+                        if (c.pressed) {
+                            val d = c.position - o.first
+                            if (c.id !in active && d.getDistance() > slop) active += c.id
+                            if (c.id in active) {
+                                c.consume()
+                                var x = d.x / stickRadius; var y = -d.y / stickRadius
+                                val m = sqrt(x * x + y * y)
+                                if (m > 1f) { x /= m; y /= m }
+                                if (m < 0.08f) { x = 0f; y = 0f }
+                                if (o.second) { VizController.lx = x; VizController.ly = y } else { VizController.rx = x; VizController.ry = y }
+                                lastStick = System.currentTimeMillis(); stickText = describeSticks()
+                            }
+                        } else {
+                            if (c.id in active) {
+                                c.consume()
+                                if (o.second) VizController.releaseLeft() else VizController.releaseRight()
+                                lastStick = System.currentTimeMillis()
+                            }
+                            active -= c.id; origins.remove(c.id)
+                        }
+                    }
+                }
+            }
+        }.combinedClickable(
             interactionSource = remember { MutableInteractionSource() }, indication = null,
             onClick = { if (controlsVisible && !panelOpen) controlsVisible = false else lastTouch = System.currentTimeMillis() },
             onDoubleClick = { VizController.next(); lastTouch = System.currentTimeMillis() },
             onLongClick = { VizController.mashup(); lastTouch = System.currentTimeMillis() },
         ))
 
+        if (showReadout && stickText.isNotEmpty()) {
+            Text(stickText, fontFamily = F.Mono, fontSize = 12.sp, color = Color.White.copy(alpha = 0.75f), textAlign = TextAlign.Center,
+                modifier = Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 64.dp)
+                    .background(Color(0x55000000), cut(4.dp)).padding(horizontal = 10.dp, vertical = 4.dp))
+        }
         if (showInfo && t != null && !controlsVisible) {
             Column(Modifier.align(Alignment.BottomStart).windowInsetsPadding(WindowInsets.safeDrawing).padding(20.dp)) {
                 Text(t.displayTitle, fontFamily = F.Display, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.White.copy(alpha = 0.85f))
@@ -233,10 +305,11 @@ fun VizScreen(vm: AppViewModel, nav: Nav) {
                 Row(Modifier.fillMaxWidth().background(Color(0x99000000)).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { nav.pop() }) { Icon(Icons.Default.Close, "Close", tint = Color.White) }
                     IconButton(onClick = { VizController.prev(); lastTouch = System.currentTimeMillis() }) { Icon(Icons.Default.ChevronLeft, "Previous preset", tint = C.Electric) }
-                    Text(if (presetIdx >= 0) Viz.PRESETS[presetIdx].name.uppercase() else "MASHUP", fontFamily = F.Display, fontWeight = FontWeight.Bold,
+                    Text(if (presetIdx in allPresets.indices) (if (VizController.isCustom(presetIdx)) "★ " else "") + allPresets[presetIdx].name.uppercase() else "CUSTOM MIX", fontFamily = F.Display, fontWeight = FontWeight.Bold,
                         fontSize = 11.sp, letterSpacing = 1.sp, color = C.Electric, textAlign = TextAlign.Center, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     IconButton(onClick = { VizController.next(); lastTouch = System.currentTimeMillis() }) { Icon(Icons.Default.ChevronRight, "Next preset", tint = C.Electric) }
                     IconButton(onClick = { VizController.mashup(); lastTouch = System.currentTimeMillis() }) { Icon(Icons.Default.Casino, "Mashup", tint = C.Hot) }
+                    IconButton(onClick = { saveOpen = true; lastTouch = System.currentTimeMillis() }) { Icon(Icons.Default.Save, "Save preset", tint = Color.White) }
                     IconButton(onClick = { panelOpen = !panelOpen; lastTouch = System.currentTimeMillis() }) { Icon(Icons.Default.Tune, "Controls", tint = if (panelOpen) C.Hot else Color.White) }
                 }
                 // Bottom transport
@@ -249,9 +322,20 @@ fun VizScreen(vm: AppViewModel, nav: Nav) {
                     IconButton(onClick = { vm.player.toggle() }) { Icon(if (ui.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "Play", tint = C.Electric, modifier = Modifier.size(32.dp)) }
                     IconButton(onClick = { vm.player.next() }) { Icon(Icons.Default.SkipNext, "Next", tint = Color.White) }
                 }
-                if (panelOpen) VizPanel(params, Modifier.align(Alignment.CenterEnd).padding(top = 60.dp, bottom = 60.dp)) { lastTouch = System.currentTimeMillis() }
-                if (!panelOpen) Text("Tap: controls · Double-tap: next · Hold: mashup", fontFamily = F.Mono, fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f),
+                if (panelOpen) VizPanel(params, Modifier.align(Alignment.CenterEnd).padding(top = 60.dp, bottom = 60.dp), { saveOpen = true }) { lastTouch = System.currentTimeMillis() }
+                if (!panelOpen) Text("Thumbs: left = speed/intensity · right = spin/zoom\nTap: controls · Double-tap: next · Hold: mashup", textAlign = TextAlign.Center, fontFamily = F.Mono, fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f),
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 64.dp))
+            }
+        }
+        if (saveOpen) {
+            var name by remember { mutableStateOf(if (VizController.isCustom(presetIdx)) allPresets[presetIdx].name else "") }
+            Dialog({ saveOpen = false }) {
+                Text("SAVE PRESET", fontFamily = F.Display, fontWeight = FontWeight.Bold, color = C.Electric)
+                Text("Saves exactly what's on screen now, including your thumbstick moves.", fontFamily = F.Body, color = C.TextDim, fontSize = 13.sp)
+                Field(name, { name = it }, "Preset name")
+                NeonButton("Save", filled = true, modifier = Modifier.fillMaxWidth()) {
+                    VizController.saveCustom(name); saveOpen = false; lastTouch = System.currentTimeMillis()
+                }
             }
         }
     }
@@ -259,7 +343,10 @@ fun VizScreen(vm: AppViewModel, nav: Nav) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun VizPanel(p: VizParams, modifier: Modifier, touched: () -> Unit) {
+private fun VizPanel(p: VizParams, modifier: Modifier, onSave: () -> Unit, touched: () -> Unit) {
+    val custom by VizController.custom.collectAsState()
+    val stickKeep by VizController.stickKeep.collectAsState()
+    val stickReadout by VizController.stickReadout.collectAsState()
     val auto by VizController.autoCycle.collectAsState()
     val cycle by VizController.cycleSec.collectAsState()
     val onDrop by VizController.cycleOnDrop.collectAsState()
@@ -274,13 +361,21 @@ private fun VizPanel(p: VizParams, modifier: Modifier, touched: () -> Unit) {
     ) {
         PanelHead("Presets")
         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 2.dp)) {
-            itemsIndexed(Viz.PRESETS) { i, pr -> Chip(pr.name, i == presetIdx) { VizController.select(i); touched() } }
+            itemsIndexed(Viz.PRESETS + custom) { i, pr -> Chip(if (VizController.isCustom(i)) "★ ${pr.name}" else pr.name, i == presetIdx) { VizController.select(i); touched() } }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Chip("💾 Save as preset", false) { onSave(); touched() }
             Chip("🎲 Random", false) { VizController.random(); touched() }
             Chip("⚡ Mashup", false) { VizController.mashup(); touched() }
             Chip("↺ Reset", false) { VizController.reset(); touched() }
+            if (VizController.isCustom(presetIdx)) Chip("🗑 Delete this preset", false) { VizController.deleteCustom(presetIdx); touched() }
         }
+
+        PanelHead("Thumbsticks")
+        Text("Drag a thumb anywhere on screen. LEFT side: sideways = speed, up/down = intensity (warp, audio punch, trails). RIGHT side: sideways = spin, up/down = zoom.",
+            fontFamily = F.Body, color = C.TextDim, fontSize = 13.sp)
+        ToggleRow("Changes stay when I let go", stickKeep) { VizController.setStickKeep(it); touched() }
+        ToggleRow("Show stick readout", stickReadout) { VizController.setStickReadout(it); touched() }
         ToggleRow("Auto-cycle presets", auto) { VizController.setAutoCycle(it); touched() }
         if (auto) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf(10, 20, 30, 60, 120).forEach { s -> Chip("${s}s", cycle == s) { VizController.setCycleSec(s); touched() } } }
