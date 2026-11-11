@@ -83,7 +83,7 @@ class Settings(private val ctx: Context) {
 
     companion object {
         /** Cloudflare Worker relay for sending tracks to friend codes over the internet. */
-        const val DEFAULT_RELAY = "https://cratez-relay.REPLACE.workers.dev"
+        const val DEFAULT_RELAY = "https://cratez-relay.djqwik.workers.dev"
         private const val ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
         fun newFriendCode(): String {
             val r = SecureRandom()

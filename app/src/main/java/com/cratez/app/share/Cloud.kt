@@ -165,7 +165,7 @@ class Cloud(
 
     /** Downloads everything waiting in this phone's inbox. Returns (count, sender names). */
     suspend fun checkInbox(): Pair<Int, Set<String>> = inboxLock.withLock {
-        withContext(Dispatchers.IO) {
+        withContext<Pair<Int, Set<String>>>(Dispatchers.IO) {
             val s = s()
             if (!configured(s)) return@withContext 0 to emptySet()
             _state.update { it.copy(checking = true) }
