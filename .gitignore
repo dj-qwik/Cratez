@@ -1,0 +1,8 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+node_modules/
+.wrangler/
+app/schemas/

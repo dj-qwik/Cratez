@@ -1,0 +1,219 @@
+package com.cratez.app.ui
+
+import android.app.Application
+import android.net.Uri
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.cratez.app.CratezApp
+import com.cratez.app.data.AppSettings
+import com.cratez.app.data.FriendEntity
+import com.cratez.app.data.Settings
+import com.cratez.app.data.Status
+import com.cratez.app.data.TrackEntity
+import com.cratez.core.music.MusicKey
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import java.io.File
+import kotlin.math.abs
+
+enum class SortBy(val label: String) { ADDED("Recently added"), TITLE("Title"), ARTIST("Artist"), BPM("BPM"), KEY("Key (Camelot)"), ENERGY("Energy"), GENRE("Genre") }
+
+data class Filter(
+    val query: String = "",
+    val crate: String = CRATE_ALL,
+    val sort: SortBy = SortBy.ADDED,
+    val bpmMin: Float = 60f,
+    val bpmMax: Float = 200f,
+    val minEnergy: Int = 0,
+)
+
+const val CRATE_ALL = "All"
+const val CRATE_RECEIVED = "Received"
+const val CRATE_REVIEW = "Review"
+
+data class Match(val track: TrackEntity, val compat: MusicKey.Compat, val bpmDiff: Double)
+
+class AppViewModel(app: Application) : AndroidViewModel(app) {
+    private val a = app as CratezApp
+    val engine = a.engine
+    val beam = a.beam
+    val dupes = a.dupes
+    val player = a.player
+    val cloud = a.cloud
+
+    val tracks: StateFlow<List<TrackEntity>> = a.db.tracks().observeAll().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val settings: StateFlow<AppSettings> = a.settings.flow.stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
+    val friends: StateFlow<List<FriendEntity>> = a.db.friends().observeAll().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val queued: StateFlow<Int> = a.db.tracks().observeQueued().stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+
+    private val _filter = MutableStateFlow(Filter())
+    val filter: StateFlow<Filter> = _filter
+
+    private val _selection = MutableStateFlow<Set<Long>>(emptySet())
+    val selection: StateFlow<Set<Long>> = _selection
+
+    private val _toast = MutableStateFlow<String?>(null)
+    val toast: StateFlow<String?> = _toast
+    fun toast(msg: String) { _toast.value = msg }
+    fun clearToast() { _toast.value = null }
+
+    val visible: StateFlow<List<TrackEntity>> = combine(tracks, _filter) { list, f -> applyFilter(list, f) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Crate name → count. Genres are crates automatically. */
+    val crates: StateFlow<List<Pair<String, Int>>> = tracks.map { list ->
+        val out = ArrayList<Pair<String, Int>>()
+        out += CRATE_ALL to list.size
+        val rec = list.count { it.received }
+        if (rec > 0) out += CRATE_RECEIVED to rec
+        val review = list.count { it.status == Status.DONE && !it.genreLocked && it.genreConfidence < 0.5 }
+        if (review > 0) out += CRATE_REVIEW to review
+        list.filter { it.genre.isNotBlank() }.groupingBy { it.genre }.eachCount().entries.sortedByDescending { it.value }
+            .forEach { out += it.key to it.value }
+        out
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    private fun applyFilter(list: List<TrackEntity>, f: Filter): List<TrackEntity> {
+        val q = f.query.trim().lowercase()
+        var r = list.asSequence()
+        when (f.crate) {
+            CRATE_ALL -> {}
+            CRATE_RECEIVED -> r = r.filter { it.received }
+            CRATE_REVIEW -> r = r.filter { it.status == Status.DONE && !it.genreLocked && it.genreConfidence < 0.5 }
+            else -> r = r.filter { it.genre == f.crate }
+        }
+        if (q.isNotEmpty()) r = r.filter {
+            it.title.lowercase().contains(q) || it.artist.lowercase().contains(q) || it.fileName.lowercase().contains(q) ||
+                it.genre.lowercase().contains(q) || it.album.lowercase().contains(q) || it.label.lowercase().contains(q) ||
+                (it.musicalKey >= 0 && MusicKey.camelot(it.musicalKey).equals(q, true))
+        }
+        if (f.bpmMin > 60f || f.bpmMax < 200f) r = r.filter { it.bpm <= 0 || it.bpm in f.bpmMin..f.bpmMax }
+        if (f.minEnergy > 0) r = r.filter { it.energy >= f.minEnergy }
+        val l = r.toList()
+        return when (f.sort) {
+            SortBy.ADDED -> l
+            SortBy.TITLE -> l.sortedBy { it.displayTitle.lowercase() }
+            SortBy.ARTIST -> l.sortedBy { it.displayArtist.lowercase() }
+            SortBy.BPM -> l.sortedBy { if (it.bpm <= 0) 999.0 else it.bpm }
+            SortBy.KEY -> l.sortedBy { if (it.musicalKey < 0) 99 else MusicKey.camelotNumber(it.musicalKey) * 2 + if (MusicKey.isMinor(it.musicalKey)) 0 else 1 }
+            SortBy.ENERGY -> l.sortedByDescending { it.energy }
+            SortBy.GENRE -> l.sortedBy { it.genre.ifBlank { "zzz" } }
+        }
+    }
+
+    fun setQuery(q: String) { _filter.value = _filter.value.copy(query = q) }
+    fun setCrate(c: String) { _filter.value = _filter.value.copy(crate = c) }
+    fun setSort(s: SortBy) { _filter.value = _filter.value.copy(sort = s) }
+    fun setBpm(min: Float, max: Float) { _filter.value = _filter.value.copy(bpmMin = min, bpmMax = max) }
+    fun setMinEnergy(e: Int) { _filter.value = _filter.value.copy(minEnergy = e) }
+    fun resetFilters() { _filter.value = Filter(crate = _filter.value.crate) }
+
+    // ---- Selection ----
+    fun toggleSelect(id: Long) { val s = _selection.value; _selection.value = if (id in s) s - id else s + id }
+    fun selectAllVisible() { _selection.value = visible.value.map { it.id }.toSet() }
+    fun clearSelection() { _selection.value = emptySet() }
+    fun selectedTracks(): List<TrackEntity> { val s = _selection.value; return tracks.value.filter { it.id in s } }
+
+    // ---- Import ----
+    fun addFiles(uris: List<Uri>) = viewModelScope.launch {
+        val n = a.importer.addFiles(uris); afterImport(n)
+    }
+    fun addTree(uri: Uri) = viewModelScope.launch {
+        toast("Scanning folder…")
+        val n = a.importer.addTree(uri); afterImport(n)
+    }
+    fun importShared(uris: List<Uri>) = viewModelScope.launch {
+        val n = a.importer.importShared(uris); afterImport(n)
+    }
+    private fun afterImport(n: Int) {
+        toast(if (n == 0) "No new tracks found" else "Added $n track${if (n == 1) "" else "s"} · analyzing")
+        if (n > 0) engine.kick()
+    }
+
+    // ---- Track edits ----
+    fun setGenre(t: TrackEntity, genre: String) = viewModelScope.launch {
+        val updated = t.copy(genre = genre, genreLocked = true, genreConfidence = 1.0)
+        a.db.tracks().update(updated)
+        if (settings.value.writeTags) engine.writeTagsNow(updated)?.let { toast(it) }
+    }
+    fun scaleBpm(t: TrackEntity, factor: Double) = viewModelScope.launch {
+        val nb = (t.bpm * factor * 10).let { Math.round(it) / 10.0 }
+        if (nb < 40 || nb > 260) return@launch
+        val updated = t.copy(bpm = nb)
+        a.db.tracks().update(updated)
+        if (settings.value.writeTags) engine.writeTagsNow(updated)
+    }
+    fun writeTags(t: TrackEntity) = viewModelScope.launch { toast(engine.writeTagsNow(t) ?: "Tags written ✓") }
+    fun reanalyze(ids: Collection<Long>) = viewModelScope.launch { a.db.tracks().requeue(ids.toList()); engine.kick(); toast("Re-scanning ${ids.size} track${if (ids.size == 1) "" else "s"}") }
+    fun reanalyzeAll() = reanalyze(tracks.value.map { it.id })
+    fun remove(ids: Collection<Long>) = viewModelScope.launch {
+        ids.forEach { File(engine.artFile(it).path).delete() }
+        a.db.tracks().delete(ids.toList()); clearSelection(); toast("Removed from Cratez (files untouched)")
+    }
+    fun clearLibrary() = viewModelScope.launch { a.db.tracks().deleteAll(); toast("Library cleared (files untouched)") }
+
+    fun harmonicMatches(t: TrackEntity): List<Match> {
+        if (t.musicalKey < 0) return emptyList()
+        return tracks.value.asSequence().filter { it.id != t.id && it.musicalKey >= 0 && it.bpm > 0 }
+            .map { Match(it, MusicKey.compatibility(t.musicalKey, it.musicalKey), if (t.bpm > 0) bpmDistance(t.bpm, it.bpm) else 0.0) }
+            .filter { it.compat != MusicKey.Compat.NONE && (t.bpm <= 0 || it.bpmDiff <= 0.06) }
+            .sortedWith(compareBy<Match> { it.compat.ordinal }.thenBy { it.bpmDiff }).take(25).toList()
+    }
+    private fun bpmDistance(a: Double, b: Double) = listOf(b, b * 2, b / 2).minOf { abs(it - a) / a }
+
+    // ---- Playback ----
+    fun play(list: List<TrackEntity>, index: Int) = player.playList(list, index)
+
+    // ---- Settings ----
+    fun setName(v: String) = viewModelScope.launch { a.settings.setName(v) }
+    fun setWriteTags(v: Boolean) = viewModelScope.launch { a.settings.setWriteTags(v) }
+    fun setCamelot(v: Boolean) = viewModelScope.launch { a.settings.setCamelot(v) }
+    fun setOnline(v: Boolean) = viewModelScope.launch { a.settings.setOnline(v) }
+    fun setReplaceArt(v: Boolean) = viewModelScope.launch { a.settings.setReplaceArt(v) }
+    fun setBeamVisible(v: Boolean) = viewModelScope.launch {
+        a.settings.setBeamVisible(v); if (v) beam.startAdvertising() else beam.stopAdvertising()
+    }
+
+    // ---- Online sharing (friend codes over the internet) ----
+    fun sendOnline(code: String, name: String, ids: List<Long>) = viewModelScope.launch {
+        val list = tracks.value.filter { it.id in ids }
+        toast("Uploading ${list.size} track${if (list.size == 1) "" else "s"} to $name…")
+        clearSelection()
+        val err = cloud.send(code, name, list)
+        toast(err ?: "Sent to $name ✓ — it lands in their Cratez")
+    }
+    fun checkInbox(quiet: Boolean = false) = viewModelScope.launch {
+        val (n, names) = cloud.checkInbox()
+        if (n > 0) toast("${names.joinToString()} sent you $n track${if (n == 1) "" else "s"} 🎧")
+        else if (!quiet) toast(cloud.state.value.lastError ?: "No new tracks")
+    }
+    suspend fun lookupFriend(code: String): String? = runCatching { cloud.lookup(code) }.getOrNull()
+    fun setRelayUrl(v: String) = viewModelScope.launch { a.settings.setRelayUrl(v); cloud.register() }
+    fun setOnlineSharing(v: Boolean) = viewModelScope.launch { a.settings.setOnlineSharing(v); if (v) cloud.register() }
+
+    // ---- Friends ----
+    fun addFriend(input: String, name: String?): Boolean {
+        val (code, qrName) = Settings.parseFriendCode(input) ?: return false
+        if (code == settings.value.myCode) { toast("That's your own code"); return true }
+        viewModelScope.launch { a.db.friends().upsert(FriendEntity(code, (name ?: qrName)?.ifBlank { null } ?: "Friend ${code.takeLast(4)}")) }
+        toast("Friend added")
+        return true
+    }
+    fun removeFriend(code: String) = viewModelScope.launch { a.db.friends().delete(code) }
+
+    // ---- Dupes ----
+    fun scanDupes() = viewModelScope.launch { dupes.scan() }
+    fun afterDupesDeleted(ids: Collection<Long>) = viewModelScope.launch {
+        val gone = dupes.deletedSize(ids)
+        dupes.markDeleted(ids)
+        // Drop library entries pointing at the deleted files.
+        val lib = a.db.tracks().all()
+        val dead = lib.filter { t -> gone.any { (name, size) -> name == t.fileName && (size == t.sizeBytes || t.sizeBytes == 0L) } }.map { it.id }
+        if (dead.isNotEmpty()) a.db.tracks().delete(dead)
+    }
+}
