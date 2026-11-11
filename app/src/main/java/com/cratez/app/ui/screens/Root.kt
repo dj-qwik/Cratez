@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
@@ -77,6 +78,8 @@ sealed interface Overlay {
     data object Viz : Overlay
     data class Share(val ids: List<Long>) : Overlay
     data class SendOnline(val ids: List<Long>) : Overlay
+    data class Playlist(val id: Long) : Overlay
+    data class AddToList(val ids: List<Long>) : Overlay
 }
 
 class Nav {
@@ -105,6 +108,7 @@ fun CratezRoot(vm: AppViewModel) {
                     0 -> LibraryScreen(vm, nav)
                     1 -> BeamScreen(vm, nav)
                     2 -> DupesScreen(vm)
+                    4 -> PlaylistsScreen(vm, nav)
                     else -> SettingsScreen(vm)
                 }
             }
@@ -120,6 +124,8 @@ fun CratezRoot(vm: AppViewModel) {
                     Overlay.Viz -> VizScreen(vm, nav)
                     is Overlay.Share -> ShareSheet(vm, o.ids, nav)
                     is Overlay.SendOnline -> SendOnlineScreen(vm, o.ids, nav)
+                    is Overlay.Playlist -> PlaylistDetail(vm, o.id, nav)
+                    is Overlay.AddToList -> AddToPlaylistSheet(vm, o.ids, nav)
                 }
             }
         }
@@ -149,7 +155,7 @@ fun CratezRoot(vm: AppViewModel) {
 @Composable
 private fun BottomBar(nav: Nav) {
     val items = listOf(
-        Triple("Crates", Icons.Default.LibraryMusic, 0), Triple("Beam", Icons.Default.WifiTethering, 1),
+        Triple("Crates", Icons.Default.LibraryMusic, 0), Triple("Lists", Icons.AutoMirrored.Filled.QueueMusic, 4), Triple("Beam", Icons.Default.WifiTethering, 1),
         Triple("Dupes", Icons.Default.ContentCopy, 2), Triple("Setup", Icons.Default.Settings, 3),
     )
     Row(
@@ -160,7 +166,7 @@ private fun BottomBar(nav: Nav) {
         for ((label, icon, idx) in items) {
             val sel = nav.tab == idx
             Column(
-                Modifier.clickable(remember { MutableInteractionSource() }, null) { nav.tab = idx; nav.stack.clear() }.padding(horizontal = 14.dp, vertical = 4.dp),
+                Modifier.clickable(remember { MutableInteractionSource() }, null) { nav.tab = idx; nav.stack.clear() }.padding(horizontal = 8.dp, vertical = 4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Box(Modifier.width(28.dp).height(2.dp).background(if (sel) C.Electric else Color.Transparent))

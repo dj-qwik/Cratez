@@ -33,6 +33,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
@@ -264,6 +265,7 @@ private fun SelectionBar(vm: AppViewModel, nav: Nav, modifier: Modifier) {
     ) {
         BarAction(Icons.Default.Share, "Share", C.Electric) { nav.push(Overlay.Share(sel.toList())) }
         BarAction(Icons.Default.PlayArrow, "Play") { vm.play(vm.selectedTracks(), 0); vm.clearSelection() }
+        BarAction(Icons.AutoMirrored.Filled.PlaylistAdd, "+ List", C.Hot) { nav.push(Overlay.AddToList(sel.toList())) }
         BarAction(Icons.Default.Refresh, "Rescan") { vm.reanalyze(sel); vm.clearSelection() }
         BarAction(Icons.Default.Delete, "Remove", C.Hot) { vm.remove(sel) }
     }

@@ -23,6 +23,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -84,6 +85,7 @@ fun DetailScreen(vm: AppViewModel, id: Long, nav: Nav) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { nav.pop() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = C.Electric) }
                 Text("TRACK FILE", style = androidx.compose.material3.MaterialTheme.typography.labelLarge, color = C.TextDim, modifier = Modifier.weight(1f))
+                IconButton(onClick = { nav.push(Overlay.AddToList(listOf(t.id))) }) { Icon(Icons.AutoMirrored.Filled.PlaylistAdd, "Add to playlist", tint = C.Electric) }
                 IconButton(onClick = { nav.push(Overlay.Share(listOf(t.id))) }) { Icon(Icons.Default.Share, "Share", tint = C.Electric) }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {

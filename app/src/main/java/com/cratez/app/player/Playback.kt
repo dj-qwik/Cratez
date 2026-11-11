@@ -132,8 +132,9 @@ class PlayerConnection(private val ctx: Context) {
                 .setArtworkUri(t.artPath?.let { Uri.fromFile(File(it)) }).build(),
         ).build()
 
-    fun playList(tracks: List<TrackEntity>, start: Int) = withController { c ->
+    fun playList(tracks: List<TrackEntity>, start: Int, shuffle: Boolean = false) = withController { c ->
         if (tracks.isEmpty()) return@withController
+        c.shuffleModeEnabled = shuffle
         c.setMediaItems(tracks.map { item(it) }, start.coerceIn(0, tracks.lastIndex), 0)
         c.prepare(); c.play()
     }
@@ -142,6 +143,21 @@ class PlayerConnection(private val ctx: Context) {
     fun playAt(t: TrackEntity, ms: Long) = withController { c ->
         if (c.currentMediaItem?.mediaId == t.id.toString()) { c.seekTo(ms); c.play(); return@withController }
         c.setMediaItems(listOf(item(t)), 0, ms); c.prepare(); c.play()
+    }
+
+    /** Insert right after the current track. */
+    fun playNext(tracks: List<TrackEntity>) = withController { c ->
+        if (tracks.isEmpty()) return@withController
+        if (c.mediaItemCount == 0) { c.setMediaItems(tracks.map { item(it) }); c.prepare(); c.play(); return@withController }
+        c.addMediaItems(c.currentMediaItemIndex + 1, tracks.map { item(it) })
+    }
+
+    /** Append to the end of the queue. */
+    fun addToQueue(tracks: List<TrackEntity>) = withController { c ->
+        if (tracks.isEmpty()) return@withController
+        val empty = c.mediaItemCount == 0
+        c.addMediaItems(tracks.map { item(it) })
+        if (empty) { c.prepare(); c.play() }
     }
 
     fun toggle() = withController { c -> if (c.isPlaying) c.pause() else { if (c.playbackState == Player.STATE_IDLE) c.prepare(); c.play() } }

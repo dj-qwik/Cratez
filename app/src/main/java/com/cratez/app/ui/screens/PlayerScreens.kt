@@ -38,6 +38,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.ChevronLeft
@@ -126,6 +127,7 @@ fun NowPlayingScreen(vm: AppViewModel, nav: Nav) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { nav.pop() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = C.Electric) }
                 Text("NOW PLAYING", style = androidx.compose.material3.MaterialTheme.typography.labelLarge, color = C.TextDim, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                IconButton(onClick = { t?.let { nav.push(Overlay.AddToList(listOf(it.id))) } }) { Icon(Icons.AutoMirrored.Filled.PlaylistAdd, "Add to playlist", tint = C.Electric) }
                 IconButton(onClick = { t?.let { nav.push(Overlay.Detail(it.id)) } }) { Icon(Icons.Default.Tune, "Track info", tint = C.Electric) }
             }
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {

@@ -50,6 +50,55 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val settings: StateFlow<AppSettings> = a.settings.flow.stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
     val friends: StateFlow<List<FriendEntity>> = a.db.friends().observeAll().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val queued: StateFlow<Int> = a.db.tracks().observeQueued().stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+    val playlists: StateFlow<List<com.cratez.app.data.PlaylistEntity>> = a.db.playlists().observeAll().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    // ---- Playlists ----
+    fun playlistTracks(p: com.cratez.app.data.PlaylistEntity): List<TrackEntity> {
+        val byId = tracks.value.associateBy { it.id }
+        return p.ids.mapNotNull { byId[it] }
+    }
+    suspend fun createPlaylist(name: String, ids: List<Long> = emptyList()): Long =
+        a.db.playlists().insert(com.cratez.app.data.PlaylistEntity(name = name.trim().ifBlank { "Playlist ${playlists.value.size + 1}" }, trackIds = ids.joinToString(",")))
+    fun addToPlaylist(playlistId: Long, ids: List<Long>) = viewModelScope.launch {
+        val p = a.db.playlists().get(playlistId) ?: return@launch
+        val existing = p.ids
+        val add = ids.filter { it !in existing }
+        a.db.playlists().update(p.withIds(existing + add))
+        toast(if (add.isEmpty()) "Already in ${p.name}" else "Added ${add.size} to ${p.name}")
+        clearSelection()
+    }
+    fun newPlaylistWith(name: String, ids: List<Long>) = viewModelScope.launch {
+        createPlaylist(name, ids); toast("Created \"${name.ifBlank { "playlist" }}\" with ${ids.size} track${if (ids.size == 1) "" else "s"}"); clearSelection()
+    }
+    fun renamePlaylist(p: com.cratez.app.data.PlaylistEntity, name: String) = viewModelScope.launch { a.db.playlists().update(p.copy(name = name.trim().ifBlank { p.name }, updatedAt = System.currentTimeMillis())) }
+    fun deletePlaylist(p: com.cratez.app.data.PlaylistEntity) = viewModelScope.launch { a.db.playlists().delete(p.id); toast("Deleted ${p.name}") }
+    fun setPlaylistOrder(p: com.cratez.app.data.PlaylistEntity, ids: List<Long>) = viewModelScope.launch { a.db.playlists().update(p.withIds(ids)) }
+    fun removeFromPlaylist(p: com.cratez.app.data.PlaylistEntity, id: Long) = setPlaylistOrder(p, p.ids - id)
+    fun moveInPlaylist(p: com.cratez.app.data.PlaylistEntity, from: Int, to: Int) {
+        val l = p.ids.toMutableList(); if (from !in l.indices || to !in l.indices) return
+        val x = l.removeAt(from); l.add(to, x); setPlaylistOrder(p, l)
+    }
+    /** Re-order like a DJ set: compatible keys, close tempos, energy building. */
+    fun harmonicOrder(p: com.cratez.app.data.PlaylistEntity) = viewModelScope.launch {
+        val ts = playlistTracks(p)
+        val order = com.cratez.core.music.MixOrder.order(ts.map { com.cratez.core.music.MixOrder.Item(it.id, it.bpm, it.musicalKey, it.energy) }, ts.firstOrNull()?.id)
+        a.db.playlists().update(p.withIds(order)); toast("Ordered for smooth mixing")
+    }
+    fun playPlaylist(p: com.cratez.app.data.PlaylistEntity, start: Int = 0, shuffle: Boolean = false) {
+        val ts = playlistTracks(p)
+        if (ts.isEmpty()) { toast("This playlist is empty"); return }
+        player.playList(ts, if (shuffle) (ts.indices).random() else start, shuffle)
+    }
+    /** Builds a harmonic-mix playlist from the current crate/filter. */
+    fun playlistFromCrate() = viewModelScope.launch {
+        val ts = visible.value
+        if (ts.isEmpty()) { toast("Nothing in this crate"); return@launch }
+        val order = com.cratez.core.music.MixOrder.order(ts.map { com.cratez.core.music.MixOrder.Item(it.id, it.bpm, it.musicalKey, it.energy) })
+        val name = "${filter.value.crate} mix"
+        createPlaylist(name, order); toast("Created \"$name\" (${order.size} tracks, harmonic order)")
+    }
+    fun playNext(ids: List<Long>) { player.playNext(tracks.value.filter { it.id in ids }); toast("Playing next"); clearSelection() }
+    fun addToQueue(ids: List<Long>) { player.addToQueue(tracks.value.filter { it.id in ids }); toast("Added to queue"); clearSelection() }
 
     private val _filter = MutableStateFlow(Filter())
     val filter: StateFlow<Filter> = _filter

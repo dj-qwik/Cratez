@@ -91,6 +91,37 @@ data class FriendEntity(
     val addedAt: Long = System.currentTimeMillis(),
 )
 
+@Entity(tableName = "playlists")
+data class PlaylistEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    /** Ordered track ids, comma separated. */
+    val trackIds: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+) {
+    val ids: List<Long> get() = trackIds.split(',').mapNotNull { it.trim().toLongOrNull() }
+    fun withIds(list: List<Long>) = copy(trackIds = list.joinToString(","), updatedAt = System.currentTimeMillis())
+}
+
+@Dao
+interface PlaylistDao {
+    @Query("SELECT * FROM playlists ORDER BY updatedAt DESC")
+    fun observeAll(): Flow<List<PlaylistEntity>>
+
+    @Query("SELECT * FROM playlists WHERE id = :id")
+    suspend fun get(id: Long): PlaylistEntity?
+
+    @Insert
+    suspend fun insert(p: PlaylistEntity): Long
+
+    @Update
+    suspend fun update(p: PlaylistEntity)
+
+    @Query("DELETE FROM playlists WHERE id = :id")
+    suspend fun delete(id: Long)
+}
+
 @Dao
 interface TrackDao {
     @Query("SELECT * FROM tracks ORDER BY addedAt DESC")
@@ -154,10 +185,11 @@ interface FriendDao {
     suspend fun delete(code: String)
 }
 
-@Database(entities = [TrackEntity::class, FriendEntity::class], version = 3, exportSchema = true)
+@Database(entities = [TrackEntity::class, FriendEntity::class, PlaylistEntity::class], version = 4, exportSchema = true)
 abstract class CratezDb : RoomDatabase() {
     abstract fun tracks(): TrackDao
     abstract fun friends(): FriendDao
+    abstract fun playlists(): PlaylistDao
 
     companion object {
         private val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -175,6 +207,12 @@ abstract class CratezDb : RoomDatabase() {
             }
         }
 
-        fun create(ctx: Context) = Room.databaseBuilder(ctx, CratezDb::class.java, "cratez.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `playlists` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `trackIds` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL)")
+            }
+        }
+
+        fun create(ctx: Context) = Room.databaseBuilder(ctx, CratezDb::class.java, "cratez.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build()
     }
 }
