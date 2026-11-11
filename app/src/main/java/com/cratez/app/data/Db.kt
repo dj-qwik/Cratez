@@ -1,7 +1,10 @@
 package com.cratez.app.data
 
 import android.content.Context
+import androidx.room.ColumnInfo
 import androidx.room.Dao
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.room.Database
 import androidx.room.Entity
 import androidx.room.Index
@@ -45,6 +48,10 @@ data class TrackEntity(
     val genreAlternatives: String = "",
     val genreLocked: Boolean = false,
     val bpm: Double = 0.0,
+    /** True once the user set the BPM by hand; re-analysis won't overwrite it. */
+    @ColumnInfo(defaultValue = "0") val bpmLocked: Boolean = false,
+    /** Other plausible tempos from analysis, "175.0:0.82|87.5:0.61". */
+    @ColumnInfo(defaultValue = "") val bpmAlts: String = "",
     val musicalKey: Int = -1,
     val keySource: String = "",
     val energy: Int = 0,
@@ -69,7 +76,7 @@ data class TrackEntity(
     override fun equals(other: Any?) = other is TrackEntity && other.id == id && other.status == status &&
         other.genre == genre && other.bpm == bpm && other.musicalKey == musicalKey && other.artPath == artPath &&
         other.title == title && other.artist == artist && other.energy == energy && other.tagsWritten == tagsWritten &&
-        other.analyzedAt == analyzedAt
+        other.analyzedAt == analyzedAt && other.bpmLocked == bpmLocked && other.bpmAlts == bpmAlts
     override fun hashCode() = id.hashCode()
 }
 
@@ -143,12 +150,19 @@ interface FriendDao {
     suspend fun delete(code: String)
 }
 
-@Database(entities = [TrackEntity::class, FriendEntity::class], version = 1, exportSchema = true)
+@Database(entities = [TrackEntity::class, FriendEntity::class], version = 2, exportSchema = true)
 abstract class CratezDb : RoomDatabase() {
     abstract fun tracks(): TrackDao
     abstract fun friends(): FriendDao
 
     companion object {
-        fun create(ctx: Context) = Room.databaseBuilder(ctx, CratezDb::class.java, "cratez.db").build()
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE tracks ADD COLUMN bpmLocked INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE tracks ADD COLUMN bpmAlts TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        fun create(ctx: Context) = Room.databaseBuilder(ctx, CratezDb::class.java, "cratez.db").addMigrations(MIGRATION_1_2).build()
     }
 }

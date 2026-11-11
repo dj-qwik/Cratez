@@ -74,6 +74,9 @@ fun DetailScreen(vm: AppViewModel, id: Long, nav: Nav) {
     val ui by vm.player.ui.collectAsState()
     val t = all.firstOrNull { it.id == id }
     var genrePicker by remember { mutableStateOf(false) }
+    var bpmEditor by remember { mutableStateOf(false) }
+    var rescanChooser by remember { mutableStateOf(false) }
+    var sectionMode by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxSize().cyberBackdrop().clickable(remember { MutableInteractionSource() }, null) {}) {
         if (t == null) { androidx.compose.runtime.LaunchedEffect(Unit) { nav.pop() }; return@Box }
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars).verticalScroll(rememberScrollState()).padding(16.dp),
@@ -99,15 +102,18 @@ fun DetailScreen(vm: AppViewModel, id: Long, nav: Nav) {
                     if (idx >= 0) vm.play(list, idx) else vm.play(listOf(t), 0)
                     nav.push(Overlay.NowPlaying)
                 }
-                NeonButton("Rescan", icon = Icons.Default.Refresh, modifier = Modifier.weight(1f)) { vm.reanalyze(listOf(t.id)) }
+                NeonButton("Rescan", icon = Icons.Default.Refresh, modifier = Modifier.weight(1f)) { rescanChooser = true }
             }
             if (t.status == Status.PENDING || t.status == Status.ANALYZING) Text("Analyzing… results appear here in a few seconds.", color = C.Electric, fontFamily = F.Body)
             if (t.status == Status.ERROR) Text("Analysis problem: ${t.error}", color = C.Hot, fontFamily = F.Body)
 
             // ---- Stats ----
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatTile("BPM", Modifier.weight(1f)) {
-                    Text(if (t.bpm > 0) EdmClassifier.fmtBpm(t.bpm) else "--", fontFamily = F.Mono, fontSize = 30.sp, color = C.Text)
+                StatTile(if (t.bpmLocked) "BPM · yours" else "BPM", Modifier.weight(1f).clickable { bpmEditor = true }) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(if (t.bpm > 0) EdmClassifier.fmtBpm(t.bpm) else "--", fontFamily = F.Mono, fontSize = 30.sp, color = if (t.bpmLocked) C.Electric else C.Text)
+                        Icon(Icons.Default.Edit, "Fix BPM", tint = C.TextDim, modifier = Modifier.padding(start = 4.dp).size(14.dp))
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
                         Tag("½×", C.TextDim, onClick = { vm.scaleBpm(t, 0.5) }); Tag("2×", C.TextDim, onClick = { vm.scaleBpm(t, 2.0) })
                     }
@@ -138,8 +144,9 @@ fun DetailScreen(vm: AppViewModel, id: Long, nav: Nav) {
                 }
             }
 
-            // ---- Waveform ----
-            Waveform(t.waveform, if (ui.currentId == t.id && ui.durationMs > 0) ui.positionMs.toFloat() / ui.durationMs else 0f,
+            // ---- Waveform (or section picker) ----
+            if (sectionMode) SectionPicker(vm, t, ui, settings.camelotKeys) { sectionMode = false }
+            else Waveform(t.waveform, if (ui.currentId == t.id && ui.durationMs > 0) ui.positionMs.toFloat() / ui.durationMs else 0f,
                 Modifier.fillMaxWidth().height(64.dp),
                 onSeek = if (ui.currentId == t.id) { f -> vm.player.seekTo((f * ui.durationMs).toLong()) } else null)
 
@@ -182,6 +189,8 @@ fun DetailScreen(vm: AppViewModel, id: Long, nav: Nav) {
             }
             Box(Modifier.height(40.dp))
         }
+        if (bpmEditor) BpmEditor(vm, t, ui) { bpmEditor = false }
+        if (rescanChooser) RescanChooser({ vm.reanalyze(listOf(t.id)) }, { sectionMode = true }) { rescanChooser = false }
         if (genrePicker) GenrePicker(t, { genrePicker = false }) { g -> vm.setGenre(t, g); genrePicker = false }
     }
 }

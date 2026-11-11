@@ -110,13 +110,18 @@ class AnalysisEngine(private val ctx: Context, private val db: CratezDb, private
             val base = when (h.source) { "MusicBrainz" -> 2.5; "iTunes" -> 1.5; else -> 1.0 }
             for ((g, w) in h.genres) GenreNormalizer.normalize(g)?.let { votes += GenreVote(h.source, g, it, base * w) }
         }
-        val verdict = GenreFusion.decide(votes, feats)
+        val cur0 = db.tracks().get(t0.id)
+        // A genre the user picked counts as a strong vote for tempo correction.
+        if (cur0 != null && cur0.genreLocked) Genre.fromLabel(cur0.genre)?.let { votes += GenreVote("You", it.label, it, 4.0) }
+        val (verdict, featsFixed) = GenreFusion.decideWithTempoFix(votes, feats)
 
         // ---- BPM & key: trust precise DJ-software tags when they agree with what we hear ----
-        var bpm = feats?.bpm ?: 0.0
+        var bpm = featsFixed?.bpm ?: 0.0
         tags.bpm?.replace(',', '.')?.toDoubleOrNull()?.takeIf { it in 50.0..250.0 }?.let { tb ->
             if (bpm <= 0 || MusicKey.tempoMatch(bpm, tb, 0.03)) bpm = AudioAnalyzer.roundBpm(tb)
         }
+        if (cur0 != null && cur0.bpmLocked && cur0.bpm > 0) bpm = cur0.bpm
+        val alts = altsString(featsFixed?.bpmCandidates.orEmpty(), bpm)
         var key = feats?.key ?: -1
         var keySource = if (key >= 0) "Audio" else ""
         MusicKey.parse(tags.key)?.let { key = it; keySource = "File tag" }
@@ -161,7 +166,7 @@ class AnalysisEngine(private val ctx: Context, private val db: CratezDb, private
             genreConfidence = if (cur.genreLocked) 1.0 else verdict.confidence,
             genreReasons = verdict.reasons.joinToString("\n"),
             genreAlternatives = verdict.alternatives.joinToString("|") { it.label },
-            bpm = bpm, musicalKey = key, keySource = keySource, energy = energy, loudnessDb = feats?.loudnessDb ?: 0.0,
+            bpm = bpm, bpmAlts = alts, musicalKey = key, keySource = keySource, energy = energy, loudnessDb = feats?.loudnessDb ?: 0.0,
             qualityLabel = quality?.label ?: (if (info.bitrateKbps > 0) "${info.bitrateKbps} kbps" else ""),
             cutoffHz = quality?.cutoffHz ?: 0, qualitySuspicious = quality?.suspicious ?: false,
             artPath = if (artFile.exists()) artFile.absolutePath else null,
@@ -189,6 +194,24 @@ class AnalysisEngine(private val ctx: Context, private val db: CratezDb, private
             updated = updated.copy(tagsWritten = err == null, tagNote = err ?: "Tags written to file")
         } else updated = updated.copy(tagsWritten = false, tagNote = "Tag writing is off")
         db.tracks().update(updated)
+    }
+
+    private fun altsString(c: List<Pair<Double, Double>>, chosen: Double): String {
+        val list = c.toMutableList()
+        if (chosen > 0 && list.none { kotlin.math.abs(it.first - chosen) / chosen < 0.015 }) list.add(0, chosen to 1.0)
+        return list.joinToString("|") { "${it.first}:${"%.2f".format(java.util.Locale.US, it.second)}" }
+    }
+
+    data class SectionResult(val bpm: Double, val key: Int, val keyConfidence: Double, val candidates: List<Pair<Double, Double>>, val genreHint: Double?)
+
+    /** Analyzes just part of a track (BPM + key), e.g. a clean drop picked on the waveform. */
+    suspend fun analyzeSection(t: TrackEntity, startMs: Long, lenMs: Long): SectionResult = kotlinx.coroutines.withContext(Dispatchers.Default) {
+        val (samples, rate) = Decoder.decodeRange(ctx, Uri.parse(t.uri), startMs, lenMs)
+        require(samples.size > rate * 6) { "Section too short — pick at least 8 seconds" }
+        val f = AudioAnalyzer.analyze(samples, rate)
+        val g = Genre.fromLabel(t.genre)
+        val fixed = g?.let { com.cratez.core.genre.EdmClassifier.fixTempoForGenre(it, f.bpm, f.bpmCandidates) }
+        SectionResult(fixed ?: f.bpm, f.key, f.keyConfidence, f.bpmCandidates, if (fixed != null) f.bpm else null)
     }
 
     /** Re-writes tags for a track after the user edits genre/BPM. */

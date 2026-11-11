@@ -137,16 +137,49 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- Track edits ----
     fun setGenre(t: TrackEntity, genre: String) = viewModelScope.launch {
-        val updated = t.copy(genre = genre, genreLocked = true, genreConfidence = 1.0)
+        var updated = t.copy(genre = genre, genreLocked = true, genreConfidence = 1.0)
+        // Smart tempo fix: e.g. picking Drum & Bass on a track read as 116.7 BPM → 175.
+        if (!t.bpmLocked) com.cratez.core.genre.Genre.fromLabel(genre)?.let { g ->
+            com.cratez.core.genre.EdmClassifier.fixTempoForGenre(g, t.bpm, parseAlts(t.bpmAlts))?.let { nb ->
+                toast("BPM ${com.cratez.core.genre.EdmClassifier.fmtBpm(t.bpm)} → ${com.cratez.core.genre.EdmClassifier.fmtBpm(nb)} to fit $genre")
+                updated = updated.copy(bpm = nb)
+            }
+        }
         a.db.tracks().update(updated)
         if (settings.value.writeTags) engine.writeTagsNow(updated)?.let { toast(it) }
     }
     fun scaleBpm(t: TrackEntity, factor: Double) = viewModelScope.launch {
         val nb = (t.bpm * factor * 10).let { Math.round(it) / 10.0 }
         if (nb < 40 || nb > 260) return@launch
-        val updated = t.copy(bpm = nb)
+        setBpm(t, nb)
+    }
+
+    /** Manual BPM (typed, tapped or picked). Locks it so re-analysis won't change it. */
+    fun setBpm(t: TrackEntity, bpm: Double) = viewModelScope.launch {
+        if (bpm < 40 || bpm > 260) { toast("BPM must be between 40 and 260"); return@launch }
+        val updated = (a.db.tracks().get(t.id) ?: t).copy(bpm = Math.round(bpm * 100) / 100.0, bpmLocked = true)
         a.db.tracks().update(updated)
-        if (settings.value.writeTags) engine.writeTagsNow(updated)
+        if (settings.value.writeTags) engine.writeTagsNow(updated)?.let { toast(it) }
+    }
+
+    fun unlockBpm(t: TrackEntity) = viewModelScope.launch {
+        a.db.tracks().update(t.copy(bpmLocked = false)); reanalyze(listOf(t.id))
+    }
+
+    suspend fun analyzeSection(t: TrackEntity, startMs: Long, lenMs: Long) = runCatching { engine.analyzeSection(t, startMs, lenMs) }
+
+    fun applySection(t: TrackEntity, bpm: Double?, key: Int?) = viewModelScope.launch {
+        var u = a.db.tracks().get(t.id) ?: t
+        if (bpm != null) u = u.copy(bpm = Math.round(bpm * 100) / 100.0, bpmLocked = true)
+        if (key != null && key >= 0) u = u.copy(musicalKey = key, keySource = "Section scan")
+        a.db.tracks().update(u)
+        if (settings.value.writeTags) engine.writeTagsNow(u)?.let { toast(it) }
+        toast("Updated ✓")
+    }
+
+    fun parseAlts(s: String): List<Pair<Double, Double>> = s.split('|').mapNotNull { p ->
+        val parts = p.split(':'); val b = parts.getOrNull(0)?.toDoubleOrNull() ?: return@mapNotNull null
+        b to (parts.getOrNull(1)?.toDoubleOrNull() ?: 0.5)
     }
     fun writeTags(t: TrackEntity) = viewModelScope.launch { toast(engine.writeTagsNow(t) ?: "Tags written ✓") }
     fun reanalyze(ids: Collection<Long>) = viewModelScope.launch { a.db.tracks().requeue(ids.toList()); engine.kick(); toast("Re-scanning ${ids.size} track${if (ids.size == 1) "" else "s"}") }

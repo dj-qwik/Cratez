@@ -138,6 +138,12 @@ class PlayerConnection(private val ctx: Context) {
         c.prepare(); c.play()
     }
 
+    /** Plays a single track starting at [ms] (used to preview a picked section). */
+    fun playAt(t: TrackEntity, ms: Long) = withController { c ->
+        if (c.currentMediaItem?.mediaId == t.id.toString()) { c.seekTo(ms); c.play(); return@withController }
+        c.setMediaItems(listOf(item(t)), 0, ms); c.prepare(); c.play()
+    }
+
     fun toggle() = withController { c -> if (c.isPlaying) c.pause() else { if (c.playbackState == Player.STATE_IDLE) c.prepare(); c.play() } }
     fun next() = withController { it.seekToNextMediaItem() }
     fun prev() = withController { c -> if (c.currentPosition > 3000) c.seekTo(0) else c.seekToPreviousMediaItem() }

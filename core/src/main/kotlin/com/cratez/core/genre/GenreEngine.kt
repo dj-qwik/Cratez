@@ -77,6 +77,27 @@ object EdmClassifier {
         return ex.mapValues { it.value / sum }
     }
 
+    /** Typical DJ tempo range for a genre, or null when there's no audio profile for it. */
+    fun typicalRange(g: Genre): ClosedFloatingPointRange<Double>? {
+        val pr = byGenre[g] ?: return null
+        val half = maxOf(pr.sigma * 2.0, 5.0)
+        return (pr.bpm - half)..(pr.bpm + half)
+    }
+
+    /**
+     * If [bpm] doesn't fit [genre] but one of the detected related tempos does (e.g. 116.7 → 175 for
+     * drum & bass), returns that tempo. Otherwise null.
+     */
+    fun fixTempoForGenre(genre: Genre, bpm: Double, candidates: List<Pair<Double, Double>>): Double? {
+        val range = typicalRange(genre) ?: return null
+        if (bpm <= 0 || bpm in range) return null
+        val fromCandidates = candidates.filter { it.first in range && it.second >= 0.45 }.maxByOrNull { it.second }?.first
+        if (fromCandidates != null) return fromCandidates
+        // Fall back to exact musical ratios of the detected tempo.
+        return listOf(2.0, 0.5, 1.5, 2.0 / 3, 4.0 / 3, 0.75).map { com.cratez.core.dsp.AudioAnalyzer.roundBpm(bpm * it) }
+            .filter { it in range }.minByOrNull { kotlin.math.abs(it - (range.start + range.endInclusive) / 2) }
+    }
+
     /** How plausible a genre label is for this tempo (0.3..1). Catches wrong online labels. */
     fun tempoPlausibility(g: Genre, bpm: Double): Double {
         val pr = byGenre[g] ?: return 1.0
@@ -126,6 +147,25 @@ data class GenreVerdict(
 
 /** Combines file tags, online databases and audio analysis into one genre decision. */
 object GenreFusion {
+    /**
+     * Like [decide], but when a confident named source (file tag / database) says a genre whose
+     * tempo range only fits a related tempo (×1.5, ×2…), the tempo is corrected first.
+     * Returns the verdict and the (possibly corrected) audio features.
+     */
+    fun decideWithTempoFix(votes: List<GenreVote>, audio: AudioFeatures?): Pair<GenreVerdict, AudioFeatures?> {
+        if (audio == null || audio.bpm <= 0) return decide(votes, audio) to audio
+        val strong = votes.filter { it.genre.edm && !GenreNormalizer.isGenericElectronic(it.genre) }
+            .groupBy { it.genre }.mapValues { e -> e.value.sumOf { it.weight } }.maxByOrNull { it.value }
+        if (strong != null && strong.value >= 2.0) {
+            val fixed = EdmClassifier.fixTempoForGenre(strong.key, audio.bpm, audio.bpmCandidates)
+            if (fixed != null) {
+                val a2 = audio.copy(bpm = fixed)
+                return decide(votes, a2).let { v -> v.copy(reasons = v.reasons + "Tempo corrected ${EdmClassifier.fmtBpm(audio.bpm)} → ${EdmClassifier.fmtBpm(fixed)} to fit ${strong.key.label}") } to a2
+            }
+        }
+        return decide(votes, audio) to audio
+    }
+
     fun decide(votes: List<GenreVote>, audio: AudioFeatures?): GenreVerdict {
         val audioProbs = audio?.let { EdmClassifier.classify(it) } ?: emptyMap()
         val edmAudio = audio?.let { EdmClassifier.edmLikelihood(it) }

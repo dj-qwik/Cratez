@@ -154,4 +154,74 @@ object Decoder {
         val durMs = if (durUs > 0) durUs / 1000 else (framesDone * 1000 / max(1, nativeRate))
         return DecodeResult(buf.copyOf(n), rate, waveBytes, spectrum, nativeRate, durMs)
     }
+
+    /** Decodes only [startMs, startMs + lenMs) to mono at ~22 kHz, for section re-analysis. */
+    fun decodeRange(ctx: Context, uri: Uri, startMs: Long, lenMs: Long): Pair<FloatArray, Int> {
+        val ex = MediaExtractor()
+        ex.setDataSource(ctx, uri, null)
+        var track = -1
+        for (i in 0 until ex.trackCount) {
+            if (ex.getTrackFormat(i).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true) { track = i; break }
+        }
+        require(track >= 0) { "No audio track" }
+        ex.selectTrack(track)
+        val fmt = ex.getTrackFormat(track)
+        var nativeRate = fmt.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+        var channels = fmt.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+        ex.seekTo(startMs * 1000, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
+        val codec = MediaCodec.createDecoderByType(fmt.getString(MediaFormat.KEY_MIME)!!)
+        codec.configure(fmt, null, null, 0)
+        codec.start()
+        var decim = max(1, (nativeRate / AudioAnalyzer.TARGET_RATE.toDouble()).roundToInt())
+        var rate = nativeRate / decim
+        var buf = FloatArray((lenMs / 1000.0 * rate).toInt() + rate)
+        var n = 0
+        var acc = 0f; var accN = 0
+        var floatPcm = false
+        val info = MediaCodec.BufferInfo()
+        var inputDone = false; var done = false
+        val deadline = System.currentTimeMillis() + 30_000
+        try {
+            while (!done && System.currentTimeMillis() < deadline) {
+                if (!inputDone) {
+                    val ii = codec.dequeueInputBuffer(10_000)
+                    if (ii >= 0) {
+                        val sz = ex.readSampleData(codec.getInputBuffer(ii)!!, 0)
+                        if (sz < 0) { codec.queueInputBuffer(ii, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM); inputDone = true }
+                        else { codec.queueInputBuffer(ii, 0, sz, ex.sampleTime, 0); ex.advance() }
+                    }
+                }
+                val oi = codec.dequeueOutputBuffer(info, 10_000)
+                if (oi == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                    val of = codec.outputFormat
+                    nativeRate = of.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+                    channels = of.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+                    floatPcm = of.containsKey(MediaFormat.KEY_PCM_ENCODING) && of.getInteger(MediaFormat.KEY_PCM_ENCODING) == AudioFormat.ENCODING_PCM_FLOAT
+                    decim = max(1, (nativeRate / AudioAnalyzer.TARGET_RATE.toDouble()).roundToInt()); rate = nativeRate / decim
+                    buf = FloatArray((lenMs / 1000.0 * rate).toInt() + rate); n = 0
+                } else if (oi >= 0) {
+                    if (info.size > 0) {
+                        val ob = codec.getOutputBuffer(oi)!!
+                        ob.position(info.offset); ob.limit(info.offset + info.size)
+                        val bb = ob.slice().order(ByteOrder.nativeOrder())
+                        val frames = if (floatPcm) info.size / 4 / channels else info.size / 2 / channels
+                        val fb = if (floatPcm) bb.asFloatBuffer() else null
+                        val sb = if (!floatPcm) bb.asShortBuffer() else null
+                        for (f in 0 until frames) {
+                            var s = 0f
+                            for (c in 0 until channels) { val idx = f * channels + c; s += if (fb != null) fb.get(idx) else sb!!.get(idx) / 32768f }
+                            acc += s / channels; accN++
+                            if (accN == decim) { if (n < buf.size) buf[n++] = acc / decim; acc = 0f; accN = 0 }
+                        }
+                        if (n >= buf.size) done = true
+                    }
+                    codec.releaseOutputBuffer(oi, false)
+                    if ((info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) done = true
+                }
+            }
+        } finally {
+            runCatching { codec.stop() }; runCatching { codec.release() }; ex.release()
+        }
+        return buf.copyOf(n) to rate
+    }
 }

@@ -42,6 +42,8 @@ data class AudioFeatures(
     val hatRate: Double,
     /** Onsets per second. */
     val onsetRate: Double,
+    /** Plausible tempos (incl. the chosen one) with relative fit 0..1, best first. */
+    val bpmCandidates: List<Pair<Double, Double>> = emptyList(),
 ) {
     companion object {
         val EMPTY = AudioFeatures(0.0, 0.0, -1, 0.0, 1, -60.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0)
@@ -141,6 +143,7 @@ object AudioAnalyzer {
         val (bpmFine, phase) = refineTempo(onset, fps, chosen)
         val bpm = roundBpm(bpmFine)
         val period = fps * 60.0 / bpmFine
+        val candidates = tempoCandidates(onset, fps, bpmFine)
 
         // ---- Groove features on the beat grid ----
         val beats = ArrayList<Double>()
@@ -201,6 +204,7 @@ object AudioAnalyzer {
             energy = energy, loudnessDb = loudness, subBass = subBass, bass = bass, high = highRatio,
             centroidHz = centroid, flatness = flatness, kick = kick, offbeatHat = offbeatHat,
             backbeat = backbeat, halfTime = halfTime, roll = roll, hatRate = hatRate, onsetRate = onsetRate,
+            bpmCandidates = candidates,
         )
     }
 
@@ -209,6 +213,42 @@ object AudioAnalyzer {
         var m = 0.0
         for (i in c - 1..c + 1) if (i in arr.indices && arr[i] > m) m = arr[i]
         return m
+    }
+
+    /** Related tempos (×2, ×½, ×1.5, ×⅔, ×4/3, ×¾) scored by how well a beat grid fits the onsets. */
+    internal fun tempoCandidates(onset: DoubleArray, fps: Double, main: Double): List<Pair<Double, Double>> {
+        val ratios = doubleArrayOf(1.0, 2.0, 0.5, 1.5, 2.0 / 3, 4.0 / 3, 0.75)
+        val raw = ArrayList<Pair<Double, Double>>()
+        for (r in ratios) {
+            val c = main * r
+            if (c < 60 || c > 200) continue
+            val (fine, _) = refineTempo(onset, fps, c)
+            raw += roundBpm(fine) to pulseFit(onset, fps, fine)
+        }
+        val best = raw.maxOfOrNull { it.second }?.takeIf { it > 0 } ?: return listOf(roundBpm(main) to 1.0)
+        val out = ArrayList<Pair<Double, Double>>()
+        out += roundBpm(main) to (raw.firstOrNull()?.second ?: best) / best
+        for ((b, s) in raw.drop(1).sortedByDescending { it.second }) {
+            if (out.none { abs(it.first - b) / b < 0.015 }) out += b to (s / best)
+        }
+        return out.take(5)
+    }
+
+    /** Mean onset strength on the best-aligned pulse train at [bpm]. */
+    private fun pulseFit(onset: DoubleArray, fps: Double, bpm: Double): Double {
+        val p = fps * 60.0 / bpm
+        var bestS = 0.0
+        var ph = 0.0
+        while (ph < p) {
+            var s = 0.0; var n = 0; var pos = ph
+            while (pos < onset.size - 1) {
+                val i = floor(pos).toInt(); val fr = pos - i
+                s += onset[i] * (1 - fr) + onset[i + 1] * fr; n++; pos += p
+            }
+            if (n > 0 && s / n > bestS) bestS = s / n
+            ph += 0.5
+        }
+        return bestS
     }
 
     fun roundBpm(b: Double): Double {
