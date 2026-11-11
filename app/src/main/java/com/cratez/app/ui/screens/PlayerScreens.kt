@@ -350,6 +350,7 @@ private fun VizPanel(p: VizParams, modifier: Modifier, onSave: () -> Unit, touch
     val auto by VizController.autoCycle.collectAsState()
     val cycle by VizController.cycleSec.collectAsState()
     val onDrop by VizController.cycleOnDrop.collectAsState()
+    val cycleMode by VizController.cycleMode.collectAsState()
     val showInfo by VizController.showInfo.collectAsState()
     val presetIdx by VizController.presetIndex.collectAsState()
     fun set(f: (VizParams) -> VizParams) { VizController.update(f); touched() }
@@ -359,7 +360,16 @@ private fun VizPanel(p: VizParams, modifier: Modifier, onSave: () -> Unit, touch
             .verticalScroll(rememberScrollState()).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        PanelHead("Presets")
+        // Big, obvious randomize — the fastest way to new looks.
+        NeonButton("🎲  Randomize everything", color = C.Hot, filled = true, modifier = Modifier.fillMaxWidth()) { VizController.mashup(); touched() }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Chip("🎨 Colors", false) { VizController.randomizeColors(); touched() }
+            Chip("🌀 Motion", false) { VizController.randomizeMotion(); touched() }
+            Chip("〰 Waves", false) { VizController.randomizeWaves(); touched() }
+        }
+        Text("Like what you see? Tap 💾 to keep it.", fontFamily = F.Body, color = C.TextDim, fontSize = 12.sp)
+
+        PanelHead("Presets (${Viz.PRESETS.size + custom.size})")
         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 2.dp)) {
             itemsIndexed(Viz.PRESETS + custom) { i, pr -> Chip(if (VizController.isCustom(i)) "★ ${pr.name}" else pr.name, i == presetIdx) { VizController.select(i); touched() } }
         }
@@ -379,6 +389,9 @@ private fun VizPanel(p: VizParams, modifier: Modifier, onSave: () -> Unit, touch
         ToggleRow("Auto-cycle presets", auto) { VizController.setAutoCycle(it); touched() }
         if (auto) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf(10, 20, 30, 60, 120).forEach { s -> Chip("${s}s", cycle == s) { VizController.setCycleSec(s); touched() } } }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("Presets", "Random looks", "Both").forEachIndexed { i, l -> Chip(l, cycleMode == i) { VizController.setCycleMode(i); touched() } }
+            }
             ToggleRow("Also switch on big drops", onDrop) { VizController.setCycleOnDrop(it); touched() }
         }
 

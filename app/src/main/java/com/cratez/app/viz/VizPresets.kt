@@ -60,6 +60,11 @@ object Viz {
         Palette("Toxic", v(.8f, .5f, .4f), v(.2f, .4f, .2f), v(2f, 1f, 1f), v(0f, .25f, .25f)),
         Palette("Ice", v(.55f, .75f, .9f), v(.35f, .25f, .15f), v(1f, 1f, 1f), v(.5f, .6f, .7f)),
         Palette("Blood Moon", v(.45f, .08f, .1f), v(.45f, .08f, .1f), v(1f, 1f, 1f), v(0f, 0f, 0f)),
+        Palette("Miami", v(.6f, .45f, .65f), v(.4f, .4f, .35f), v(1f, 1f, 1f), v(.85f, .45f, .55f)),
+        Palette("Gold", v(.6f, .45f, .15f), v(.4f, .3f, .1f), v(1f, 1f, 1f), v(0f, .05f, .1f)),
+        Palette("Matrix", v(.1f, .6f, .2f), v(.1f, .4f, .15f), v(1f, 1f, 1f), v(0f, 0f, 0f)),
+        Palette("Ultraviolet", v(.45f, .2f, .75f), v(.35f, .2f, .25f), v(1f, 1f, 1f), v(.1f, .3f, .6f)),
+        Palette("Mint", v(.5f, .8f, .7f), v(.3f, .2f, .3f), v(1f, 1f, 1f), v(.6f, .3f, 0f)),
     )
 
     val PRESETS = listOf(
@@ -85,10 +90,51 @@ object Viz {
         VizPreset("Strobe Temple", VizParams(warpMode = 0, waveMode = 2, palette = 3, kaleido = 3, beatFlash = true, glow = 0.7f, shapeSides = 4)),
         VizPreset("Hologram", VizParams(warpMode = 4, waveMode = 1, palette = 7, mirror = 1, chroma = 0.6f, scanlines = true, decay = 0.92f)),
         VizPreset("Supernova", VizParams(warpMode = 0, waveMode = 5, palette = 3, zoom = 0.97f, decay = 0.93f, particles = true, glow = 0.8f)),
+        // ---- Pack 2 ----
+        VizPreset("Bass Cathedral", VizParams(warpMode = 3, waveMode = 2, palette = 11, kaleido = 6, zoom = 1.01f, warp = 1.8f, decay = 0.94f, glow = 0.6f, zoomPulse = 2.2f)),
+        VizPreset("Neon Rain City", VizParams(warpMode = 6, waveMode = 3, palette = 8, warp = -1.5f, zoom = 1.0f, rot = 0f, decay = 0.95f, scanlines = true, chroma = 0.5f)),
+        VizPreset("Liquid Sunset", VizParams(warpMode = 2, waveMode = 0, palette = 3, warp = 1.8f, decay = 0.96f, seed = 0.3f)),
+        VizPreset("Ultraviolet Tunnel", VizParams(warpMode = 0, waveMode = 7, palette = 15, zoom = 1.05f, rot = 0.012f, decay = 0.93f, glow = 0.5f)),
+        VizPreset("Matrix Drop", VizParams(warpMode = 6, waveMode = 1, palette = 14, warp = -1.4f, rot = 0f, decay = 0.92f, scanlines = true, chroma = 0.3f)),
+        VizPreset("Gold Mandala", VizParams(warpMode = 1, waveMode = 0, palette = 13, kaleido = 10, decay = 0.95f, glow = 0.7f)),
+        VizPreset("Toxic Spiral", VizParams(warpMode = 5, waveMode = 4, palette = 9, warp = 1.6f, rot = 0.008f, decay = 0.95f)),
+        VizPreset("Miami Vice", VizParams(warpMode = 4, waveMode = 3, palette = 12, mirror = 1, decay = 0.91f, shapeSides = 4)),
+        VizPreset("Frozen Lake", VizParams(warpMode = 2, waveMode = 1, palette = 10, warp = 0.8f, mirror = 2, decay = 0.97f, speed = 0.6f)),
+        VizPreset("Solar Flare", VizParams(warpMode = 7, waveMode = 5, palette = 5, warp = 2f, zoom = 0.98f, glow = 0.9f, decay = 0.93f, particles = true)),
+        VizPreset("Hyperspace Jump", VizParams(warpMode = 0, waveMode = 5, palette = 7, zoom = 1.09f, rot = 0f, decay = 0.88f, zoomPulse = 2.5f, particles = true, seed = 0f)),
+        VizPreset("Acid Flashback", VizParams(warpMode = 8, waveMode = 4, palette = 4, warp = 1.6f, kaleido = 5, hueSpeed = 1.5f, decay = 0.95f)),
+        VizPreset("Wobble Machine", VizParams(warpMode = 3, waveMode = 1, palette = 2, warp = 2.4f, zoomPulse = 3f, decay = 0.92f, chroma = 0.6f)),
+        VizPreset("Crystal Kaleido", VizParams(warpMode = 4, waveMode = 2, palette = 16, kaleido = 8, glow = 0.5f, decay = 0.94f)),
+        VizPreset("Plasma Storm", VizParams(warpMode = 8, waveMode = 6, palette = 1, warp = 2f, seed = 1.2f, decay = 0.9f, speed = 1.4f)),
+        VizPreset("Deep Ocean", VizParams(warpMode = 1, waveMode = 7, palette = 10, warp = 0.6f, zoom = 1.005f, decay = 0.975f, speed = 0.5f, drift = 1.2f)),
+        VizPreset("Ember Vortex", VizParams(warpMode = 5, waveMode = 0, palette = 5, warp = 1.2f, kaleido = 3, decay = 0.94f, shapeSides = 3)),
+        VizPreset("Retro Arcade", VizParams(warpMode = 0, waveMode = 3, palette = 6, zoom = 0.985f, mirror = 2, scanlines = true, decay = 0.9f, shapeSides = 4)),
+        VizPreset("Starfield", VizParams(warpMode = 0, waveMode = 5, palette = 0, zoom = 1.03f, seed = 0f, decay = 0.9f, hueSpeed = 0.8f, particles = true)),
+        VizPreset("Psy Lotus", VizParams(warpMode = 1, waveMode = 0, palette = 4, warp = 1.6f, kaleido = 12, shapeSides = 6, decay = 0.95f)),
+        VizPreset("Dubstep Reactor", VizParams(warpMode = 7, waveMode = 2, palette = 9, warp = 2.2f, zoomPulse = 2.8f, react = 1.6f, decay = 0.92f, shapeSides = 8)),
+        VizPreset("Midnight Drive", VizParams(warpMode = 6, waveMode = 1, palette = 6, warp = -0.8f, rot = 0f, mirror = 1, scanlines = true, decay = 0.96f, shapeSides = 3)),
+        VizPreset("Chromatic Chaos", VizParams(warpMode = 8, waveMode = 4, palette = 1, warp = 1.4f, chroma = 1.3f, kaleido = 4, decay = 0.93f)),
+        VizPreset("Blood Moon Rising", VizParams(warpMode = 6, waveMode = 2, palette = 11, warp = 1.6f, rot = 0f, decay = 0.95f, glow = 0.6f)),
+        VizPreset("Electric Feather", VizParams(warpMode = 2, waveMode = 7, palette = 7, warp = 1.2f, kaleido = 6, decay = 0.96f, thickness = 2f)),
+        VizPreset("Infinite Fractal", VizParams(warpMode = 4, waveMode = 0, palette = 2, warp = 1.4f, kaleido = 8, zoom = 1.03f, decay = 0.95f)),
+        VizPreset("Gold Rush", VizParams(warpMode = 0, waveMode = 2, palette = 13, zoom = 1.04f, rot = 0.006f, glow = 0.8f, decay = 0.93f)),
+        VizPreset("Ultraviolet Bloom", VizParams(warpMode = 3, waveMode = 0, palette = 15, warp = 1.5f, kaleido = 6, decay = 0.94f, particles = true)),
     )
 
-    fun mashup(r: Random = Random.Default) = VizParams(
-        warpMode = r.nextInt(WARP_MODES.size), waveMode = r.nextInt(WAVE_MODES.size), palette = r.nextInt(PALETTES.size),
+    /** Random look, with guard rails so it's almost always worth watching. */
+    fun mashup(r: Random = Random.Default): VizParams = sanitize(rawMashup(r))
+
+    fun sanitize(p: VizParams): VizParams {
+        var q = p
+        if (q.kaleido >= 3 && q.mirror > 0) q = q.copy(mirror = 0)                      // too busy together
+        if (q.waveMode == 6 && !q.particles && q.shapeSides == 0) q = q.copy(seed = maxOf(q.seed, 0.7f)) // something to see
+        if (q.decay < 0.9f && q.seed < 0.2f && q.waveMode == 6) q = q.copy(decay = 0.93f)
+        if (q.chroma > 0.8f && q.kaleido >= 8) q = q.copy(chroma = 0.5f)
+        return q
+    }
+
+    private fun rawMashup(r: Random) = VizParams(
+        warpMode = r.nextInt(WARP_MODES.size), waveMode = r.nextInt(WAVE_MODES.size), palette = 1 + r.nextInt(PALETTES.size - 1),
         kaleido = listOf(0, 0, 0, 3, 4, 5, 6, 8, 12).random(r), mirror = listOf(0, 0, 0, 1, 2).random(r),
         zoom = 0.97f + r.nextFloat() * 0.09f, rot = (r.nextFloat() - 0.5f) * 0.02f, warp = 0.3f + r.nextFloat() * 1.7f,
         decay = 0.88f + r.nextFloat() * 0.09f, hueSpeed = r.nextFloat() * 1.5f, waveSize = 0.6f + r.nextFloat() * 1f,
@@ -140,6 +186,7 @@ object VizController {
         }.getOrDefault(emptyList())
         _stickKeep.value = sp.getBoolean("stickKeep", false)
         _stickReadout.value = sp.getBoolean("stickReadout", true)
+        _cycleMode.value = sp.getInt("cycleMode", 2)
         val last = sp.getInt("last", 0)
         if (last in all().indices) select(last)
     }
@@ -176,6 +223,19 @@ object VizController {
     fun prev() = select(if (_presetIndex.value < 0) 0 else _presetIndex.value - 1)
     fun random() = select(Random.nextInt(all().size))
     fun mashup() { _presetIndex.value = -1; _params.value = Viz.mashup(); lastChange = System.currentTimeMillis() }
+
+    /** Re-roll just the colours / just the motion / just the waves of what's on screen. */
+    fun randomizeColors() { val r = Random; val m = Viz.mashup(); _presetIndex.value = -1
+        _params.value = Viz.sanitize(_params.value.copy(palette = m.palette, hueSpeed = m.hueSpeed, glow = m.glow, chroma = m.chroma, kaleido = m.kaleido, mirror = m.mirror, scanlines = r.nextInt(5) == 0)) }
+    fun randomizeMotion() { val m = Viz.mashup(); _presetIndex.value = -1
+        _params.value = Viz.sanitize(_params.value.copy(warpMode = m.warpMode, zoom = m.zoom, rot = m.rot, warp = m.warp, decay = m.decay, drift = m.drift, zoomPulse = m.zoomPulse)) }
+    fun randomizeWaves() { val m = Viz.mashup(); _presetIndex.value = -1
+        _params.value = Viz.sanitize(_params.value.copy(waveMode = m.waveMode, waveSize = m.waveSize, thickness = m.thickness, shapeSides = m.shapeSides, particles = m.particles)) }
+
+    private val _cycleMode = MutableStateFlow(2)
+    /** 0 = presets only, 1 = fresh random looks only, 2 = both. */
+    val cycleMode: StateFlow<Int> = _cycleMode
+    fun setCycleMode(v: Int) { _cycleMode.value = v; prefs?.edit()?.putInt("cycleMode", v)?.apply() }
     fun reset() { val i = _presetIndex.value; if (i >= 0) _params.value = all()[i].p }
     fun update(f: (VizParams) -> VizParams) { _params.value = f(_params.value) }
     fun setAutoCycle(v: Boolean) { _autoCycle.value = v; lastChange = System.currentTimeMillis() }
@@ -237,7 +297,11 @@ object VizController {
         if (!_autoCycle.value) return
         val since = System.currentTimeMillis() - lastChange
         if (since > _cycleSec.value * 1000L || (_cycleOnDrop.value && bigDrop && since > 8000)) {
-            if (Random.nextInt(5) == 0) mashup() else random()
+            when (_cycleMode.value) {
+                0 -> random()
+                1 -> mashup()
+                else -> if (Random.nextInt(3) == 0) mashup() else random()
+            }
         }
     }
 }
