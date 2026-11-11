@@ -52,6 +52,10 @@ data class TrackEntity(
     @ColumnInfo(defaultValue = "0") val bpmLocked: Boolean = false,
     /** Other plausible tempos from analysis, "175.0:0.82|87.5:0.61". */
     @ColumnInfo(defaultValue = "") val bpmAlts: String = "",
+    /** Compact sound fingerprint used to learn genres from the user's own library. */
+    @ColumnInfo(defaultValue = "") val featVec: String = "",
+    /** Genre backed by a reliable source (store tag, folder, or the user) — used as a reference. */
+    @ColumnInfo(defaultValue = "0") val genreTrusted: Boolean = false,
     val musicalKey: Int = -1,
     val keySource: String = "",
     val energy: Int = 0,
@@ -150,7 +154,7 @@ interface FriendDao {
     suspend fun delete(code: String)
 }
 
-@Database(entities = [TrackEntity::class, FriendEntity::class], version = 2, exportSchema = true)
+@Database(entities = [TrackEntity::class, FriendEntity::class], version = 3, exportSchema = true)
 abstract class CratezDb : RoomDatabase() {
     abstract fun tracks(): TrackDao
     abstract fun friends(): FriendDao
@@ -163,6 +167,14 @@ abstract class CratezDb : RoomDatabase() {
             }
         }
 
-        fun create(ctx: Context) = Room.databaseBuilder(ctx, CratezDb::class.java, "cratez.db").addMigrations(MIGRATION_1_2).build()
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE tracks ADD COLUMN featVec TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE tracks ADD COLUMN genreTrusted INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE tracks SET genreTrusted = 1 WHERE genreLocked = 1")
+            }
+        }
+
+        fun create(ctx: Context) = Room.databaseBuilder(ctx, CratezDb::class.java, "cratez.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
     }
 }

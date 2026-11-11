@@ -140,10 +140,23 @@ object AudioAnalyzer {
             val (bbAlt, _) = midOf(alt)
             if (bbAlt > 0.35 && bbAlt > bbMain + 0.3) { chosen = alt; break }
         }
-        val (bpmFine, phase) = refineTempo(onset, fps, chosen)
+        var (bpmFine, phase) = refineTempo(onset, fps, chosen)
+        var candidates = tempoCandidates(onset, fps, bpmFine)
+        // Real club tracks: the strongest pulse is usually the half-time one (bars of kick+snare).
+        // When it sits at 60-100 BPM and its double also fits, the double is the DJ tempo
+        // (87 -> 174 DnB, 70 -> 140 dubstep, 67.5 -> 135 breaks). Fixes 2:3 misreads like 116.
+        val strongest = candidates.maxByOrNull { it.second }
+        if (strongest != null && strongest.first in 60.0..100.0 && strongest.first * 2 <= MAX_BPM) {
+            val target = strongest.first * 2
+            val dbl = candidates.firstOrNull { abs(it.first - target) / target < 0.02 }
+            if (dbl == null || dbl.second >= 0.55) {
+                val r = refineTempo(onset, fps, target)
+                bpmFine = r.first; phase = r.second
+                candidates = tempoCandidates(onset, fps, bpmFine)
+            }
+        }
         val bpm = roundBpm(bpmFine)
         val period = fps * 60.0 / bpmFine
-        val candidates = tempoCandidates(onset, fps, bpmFine)
 
         // ---- Groove features on the beat grid ----
         val beats = ArrayList<Double>()

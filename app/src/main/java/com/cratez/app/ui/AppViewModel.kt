@@ -137,7 +137,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- Track edits ----
     fun setGenre(t: TrackEntity, genre: String) = viewModelScope.launch {
-        var updated = t.copy(genre = genre, genreLocked = true, genreConfidence = 1.0)
+        var updated = t.copy(genre = genre, genreLocked = true, genreTrusted = true, genreConfidence = 1.0)
         // Smart tempo fix: e.g. picking Drum & Bass on a track read as 116.7 BPM → 175.
         if (!t.bpmLocked) com.cratez.core.genre.Genre.fromLabel(genre)?.let { g ->
             com.cratez.core.genre.EdmClassifier.fixTempoForGenre(g, t.bpm, parseAlts(t.bpmAlts))?.let { nb ->
@@ -157,7 +157,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Manual BPM (typed, tapped or picked). Locks it so re-analysis won't change it. */
     fun setBpm(t: TrackEntity, bpm: Double) = viewModelScope.launch {
         if (bpm < 40 || bpm > 260) { toast("BPM must be between 40 and 260"); return@launch }
-        val updated = (a.db.tracks().get(t.id) ?: t).copy(bpm = Math.round(bpm * 100) / 100.0, bpmLocked = true)
+        val cur = a.db.tracks().get(t.id) ?: t
+        val nb = Math.round(bpm * 100) / 100.0
+        val fv = com.cratez.core.genre.LibraryModel.decode(cur.featVec)?.let { com.cratez.core.genre.LibraryModel.encode(com.cratez.core.genre.LibraryModel.withBpm(it, nb)) } ?: cur.featVec
+        val updated = cur.copy(bpm = nb, bpmLocked = true, featVec = fv)
         a.db.tracks().update(updated)
         if (settings.value.writeTags) engine.writeTagsNow(updated)?.let { toast(it) }
     }
@@ -184,6 +187,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun writeTags(t: TrackEntity) = viewModelScope.launch { toast(engine.writeTagsNow(t) ?: "Tags written ✓") }
     fun reanalyze(ids: Collection<Long>) = viewModelScope.launch { a.db.tracks().requeue(ids.toList()); engine.kick(); toast("Re-scanning ${ids.size} track${if (ids.size == 1) "" else "s"}") }
     fun reanalyzeAll() = reanalyze(tracks.value.map { it.id })
+    fun resortFromLibrary() = viewModelScope.launch {
+        toast("Re-sorting genres with what your library taught Cratez…")
+        val n = engine.refineFromLibrary()
+        toast(if (n == 0) "Nothing to change — fix a few genres in Review to teach it more" else "Updated $n genre${if (n == 1) "" else "s"}")
+    }
     fun remove(ids: Collection<Long>) = viewModelScope.launch {
         ids.forEach { File(engine.artFile(it).path).delete() }
         a.db.tracks().delete(ids.toList()); clearSelection(); toast("Removed from Cratez (files untouched)")

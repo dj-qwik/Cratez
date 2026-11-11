@@ -14,6 +14,7 @@ import com.cratez.core.genre.Genre
 import com.cratez.core.genre.GenreFusion
 import com.cratez.core.genre.GenreNormalizer
 import com.cratez.core.genre.GenreVote
+import com.cratez.core.genre.LibraryModel
 import com.cratez.core.music.MusicKey
 import com.cratez.core.tags.TagData
 import com.cratez.core.text.TrackText
@@ -52,6 +53,7 @@ class AnalysisEngine(private val ctx: Context, private val db: CratezDb, private
         workers = List(2) { scope.launch { workLoop() } }
         scope.launch {
             workers.forEach { it.join() }
+            runCatching { refineFromLibrary() }
             _state.value = _state.value.copy(running = false, current = emptyList())
         }
     }
@@ -102,10 +104,16 @@ class AnalysisEngine(private val ctx: Context, private val db: CratezDb, private
         val votes = ArrayList<GenreVote>()
         tags.genre?.let { g ->
             GenreNormalizer.normalize(g)?.let { n ->
-                val w = when { n.edm && !GenreNormalizer.isGenericElectronic(n) -> 3.0; n.edm -> 1.0; else -> 1.5 }
+                // Downloaded bootlegs often carry junk non-dance tags ("Blues" on a trap edit).
+                val w = when { n.edm && !GenreNormalizer.isGenericElectronic(n) -> 3.0; n.edm -> 1.0; else -> 0.8 }
                 votes += GenreVote("File tag", g, n, w)
             }
         }
+        // Folder names ("Dubstep", "Free Breaks Collection") and file names ("… DNB Remix").
+        t0.folder.takeIf { it.isNotBlank() && it != "Picked" }?.let { f ->
+            GenreNormalizer.fromHint(f, isFolder = true)?.let { votes += GenreVote("Folder", f, it, 2.5) }
+        }
+        GenreNormalizer.fromHint(t0.fileName.substringBeforeLast('.'))?.let { votes += GenreVote("File name", t0.fileName, it, 1.5) }
         for (h in hits) {
             val base = when (h.source) { "MusicBrainz" -> 2.5; "iTunes" -> 1.5; else -> 1.0 }
             for ((g, w) in h.genres) GenreNormalizer.normalize(g)?.let { votes += GenreVote(h.source, g, it, base * w) }
@@ -113,7 +121,15 @@ class AnalysisEngine(private val ctx: Context, private val db: CratezDb, private
         val cur0 = db.tracks().get(t0.id)
         // A genre the user picked counts as a strong vote for tempo correction.
         if (cur0 != null && cur0.genreLocked) Genre.fromLabel(cur0.genre)?.let { votes += GenreVote("You", it.label, it, 4.0) }
+        // First pass fixes the tempo; then ask the user's own library what this sounds like.
+        val (_, featsTempo) = GenreFusion.decideWithTempoFix(votes, feats)
+        val vec = featsTempo?.let { LibraryModel.vector(if (cur0?.bpmLocked == true && cur0.bpm > 0) it.copy(bpm = cur0.bpm) else it) }
+        if (vec != null) LibraryModel.vote(vec, references(t0.id))?.let { v ->
+            votes += GenreVote("Your library", "${v.neighbours} similar tracks are ${v.genre.label}", v.genre, v.weight)
+        }
         val (verdict, featsFixed) = GenreFusion.decideWithTempoFix(votes, feats)
+        val trusted = (cur0?.genreLocked == true) ||
+            votes.any { it.source != "Your library" && it.weight >= 2.0 && it.genre == verdict.genre }
 
         // ---- BPM & key: trust precise DJ-software tags when they agree with what we hear ----
         var bpm = featsFixed?.bpm ?: 0.0
@@ -166,7 +182,8 @@ class AnalysisEngine(private val ctx: Context, private val db: CratezDb, private
             genreConfidence = if (cur.genreLocked) 1.0 else verdict.confidence,
             genreReasons = verdict.reasons.joinToString("\n"),
             genreAlternatives = verdict.alternatives.joinToString("|") { it.label },
-            bpm = bpm, bpmAlts = alts, musicalKey = key, keySource = keySource, energy = energy, loudnessDb = feats?.loudnessDb ?: 0.0,
+            bpm = bpm, bpmAlts = alts, featVec = vec?.let { LibraryModel.encode(LibraryModel.withBpm(it, bpm)) } ?: "",
+            genreTrusted = trusted, musicalKey = key, keySource = keySource, energy = energy, loudnessDb = feats?.loudnessDb ?: 0.0,
             qualityLabel = quality?.label ?: (if (info.bitrateKbps > 0) "${info.bitrateKbps} kbps" else ""),
             cutoffHz = quality?.cutoffHz ?: 0, qualitySuspicious = quality?.suspicious ?: false,
             artPath = if (artFile.exists()) artFile.absolutePath else null,
@@ -194,6 +211,45 @@ class AnalysisEngine(private val ctx: Context, private val db: CratezDb, private
             updated = updated.copy(tagsWritten = err == null, tagNote = err ?: "Tags written to file")
         } else updated = updated.copy(tagsWritten = false, tagNote = "Tag writing is off")
         db.tracks().update(updated)
+    }
+
+    /** Tracks with a trusted EDM genre, as (fingerprint, genre). */
+    private suspend fun references(excludeId: Long): List<Pair<FloatArray, Genre>> =
+        db.tracks().all().mapNotNull { t ->
+            if (t.id == excludeId || !t.genreTrusted) return@mapNotNull null
+            val g = Genre.fromLabel(t.genre)?.takeIf { it.edm && !GenreNormalizer.isGenericElectronic(it) } ?: return@mapNotNull null
+            LibraryModel.decode(t.featVec)?.let { it to g }
+        }
+
+    /**
+     * After a scan, re-check every track whose genre came from audio alone against the library's
+     * trusted tracks. No re-decoding, so it's quick. Returns how many genres changed.
+     */
+    suspend fun refineFromLibrary(): Int = kotlinx.coroutines.withContext(Dispatchers.Default) {
+        val all = db.tracks().all()
+        val refs = all.mapNotNull { t ->
+            if (!t.genreTrusted) return@mapNotNull null
+            val g = Genre.fromLabel(t.genre)?.takeIf { it.edm && !GenreNormalizer.isGenericElectronic(it) } ?: return@mapNotNull null
+            LibraryModel.decode(t.featVec)?.let { Triple(t.id, it, g) }
+        }
+        if (refs.size < 5) return@withContext 0
+        val writeTags = settings.current().writeTags
+        var changed = 0
+        for (t in all) {
+            if (t.genreTrusted || t.genreLocked || t.status != Status.DONE) continue
+            val v = LibraryModel.decode(t.featVec) ?: continue
+            val vote = LibraryModel.vote(v, refs.filter { it.first != t.id }.map { it.second to it.third }) ?: continue
+            if (vote.share < 0.55 || vote.neighbours < 4 || vote.genre.label == t.genre) continue
+            val tempoOk = com.cratez.core.genre.EdmClassifier.tempoPlausibility(vote.genre, t.bpm) >= 0.3
+            if (!tempoOk) continue
+            val reason = "Your library: ${vote.neighbours} similar tracks are ${vote.genre.label}"
+            val u = t.copy(genre = vote.genre.label, genreConfidence = (0.45 + vote.share * 0.45).coerceAtMost(0.9),
+                genreReasons = (t.genreReasons.lines().filterNot { it.startsWith("Your library") } + reason).joinToString("\n"))
+            db.tracks().update(u)
+            if (writeTags) writeTagsNow(u)
+            changed++
+        }
+        changed
     }
 
     private fun altsString(c: List<Pair<Double, Double>>, chosen: Double): String {

@@ -11,39 +11,40 @@ object EdmClassifier {
 
     private fun p(g: Genre, bpm: Double, sigma: Double, vararg t: Pair<String, Double>) = Profile(g, bpm, sigma, t.toMap())
 
+    // Tuned on real club masters. Tempo carries most of the weight; groove/spectrum nudge it.
     private val profiles = listOf(
-        p(Genre.HOUSE, 124.0, 4.0, "kick" to 1.5, "off" to 0.8, "bb" to 0.3),
-        p(Genre.DEEP_HOUSE, 121.0, 4.0, "kick" to 1.5, "bright" to -0.8, "loud" to -0.6, "tonal" to 0.4),
-        p(Genre.TECH_HOUSE, 126.0, 3.0, "kick" to 1.6, "off" to 0.6, "tonal" to -0.5, "sub" to 0.5, "hat" to 0.3),
-        p(Genre.PROGRESSIVE_HOUSE, 126.0, 3.0, "kick" to 1.4, "tonal" to 0.8, "bright" to 0.5),
-        p(Genre.BASS_HOUSE, 126.0, 3.0, "kick" to 1.4, "dist" to 0.8, "sub" to 0.6, "loud" to 0.4),
-        p(Genre.ELECTRO_HOUSE, 128.0, 3.0, "kick" to 1.3, "dist" to 0.8, "bright" to 0.7, "loud" to 0.5),
-        p(Genre.BIG_ROOM, 128.0, 2.0, "kick" to 1.6, "loud" to 0.9, "bright" to 0.4, "hat" to -0.5),
-        p(Genre.FUTURE_HOUSE, 125.0, 3.0, "kick" to 1.4, "sub" to 0.4, "bright" to 0.5, "bb" to 0.2),
-        p(Genre.AFRO_HOUSE, 121.0, 3.0, "kick" to 1.2, "hat" to 0.7, "tonal" to 0.3, "bright" to -0.3),
-        p(Genre.MELODIC_TECHNO, 123.0, 3.0, "kick" to 1.5, "tonal" to 0.9, "bright" to -0.4, "bb" to -0.3),
-        p(Genre.TECHNO, 132.0, 5.0, "kick" to 1.8, "bb" to -0.6, "tonal" to -0.4, "bright" to -0.4, "hat" to 0.5),
-        p(Genre.HARD_TECHNO, 148.0, 8.0, "kick" to 1.8, "dist" to 1.0, "loud" to 0.8, "tonal" to -0.3),
-        p(Genre.MINIMAL, 125.0, 3.0, "kick" to 1.4, "loud" to -0.8, "tonal" to -0.6, "sub" to -0.5),
-        p(Genre.TRANCE, 138.0, 4.0, "kick" to 1.5, "tonal" to 1.0, "off" to 0.7, "bright" to 0.4),
-        p(Genre.PSYTRANCE, 143.0, 4.0, "kick" to 1.5, "roll" to 2.0, "bright" to 0.4),
-        p(Genre.DUBSTEP, 140.0, 4.0, "kick" to -1.2, "ht" to 1.6, "sub" to 0.8, "dist" to 0.6, "hat" to -0.2),
-        p(Genre.RIDDIM, 145.0, 6.0, "kick" to -1.0, "ht" to 1.5, "dist" to 1.0, "tonal" to -0.4, "hat" to -0.3),
-        p(Genre.DRUM_AND_BASS, 174.0, 4.0, "kick" to -0.8, "bb" to 1.2, "hat" to 0.5, "sub" to 0.5),
-        p(Genre.JUNGLE, 165.0, 6.0, "kick" to -1.0, "bb" to 0.8, "hat" to 0.8, "loud" to -0.3),
-        p(Genre.BREAKBEAT, 132.0, 6.0, "kick" to -1.0, "bb" to 0.8, "hat" to 0.3),
-        p(Genre.UK_GARAGE, 132.0, 3.0, "kick" to -0.6, "bb" to 0.9, "hat" to 0.6, "sub" to 0.3),
-        p(Genre.TRAP, 145.0, 8.0, "kick" to -1.0, "ht" to 1.4, "hat" to 0.8, "sub" to 1.0, "dist" to -0.3),
-        p(Genre.FUTURE_BASS, 150.0, 8.0, "kick" to -0.8, "ht" to 1.2, "tonal" to 1.0, "bright" to 0.6, "dist" to -0.5),
-        p(Genre.HARDSTYLE, 152.0, 4.0, "kick" to 1.8, "dist" to 1.2, "loud" to 1.0),
-        p(Genre.HARDCORE, 175.0, 15.0, "kick" to 1.8, "dist" to 1.0, "loud" to 0.8),
-        p(Genre.MOOMBAHTON, 108.0, 4.0, "kick" to -0.3, "bb" to 0.8, "sub" to 0.3),
-        p(Genre.AMAPIANO, 113.0, 3.0, "kick" to -0.2, "hat" to 0.6, "sub" to 0.8, "tonal" to 0.3),
-        p(Genre.ELECTRO, 128.0, 8.0, "kick" to -0.7, "bb" to 0.8, "bright" to 0.4),
-        p(Genre.SYNTHWAVE, 105.0, 15.0, "kick" to 0.4, "bb" to 1.0, "tonal" to 0.8, "bright" to 0.4, "sub" to -0.6),
+        p(Genre.HOUSE, 124.0, 4.0, "kick" to 0.7, "off" to 0.6, "bb" to 0.3),
+        p(Genre.DEEP_HOUSE, 121.0, 4.0, "kick" to 0.7, "bright" to -0.6, "loud" to -0.6, "tonal" to 0.4),
+        p(Genre.TECH_HOUSE, 126.0, 3.0, "kick" to 0.7, "off" to 0.4, "tonal" to -0.4, "sub" to 0.3),
+        p(Genre.PROGRESSIVE_HOUSE, 126.0, 3.0, "kick" to 0.7, "tonal" to 0.8, "bright" to 0.4),
+        p(Genre.BASS_HOUSE, 126.0, 3.0, "kick" to 0.7, "dist" to 0.6, "sub" to 0.4),
+        p(Genre.ELECTRO_HOUSE, 128.0, 3.0, "kick" to 0.7, "dist" to 0.6, "bright" to 0.6),
+        p(Genre.BIG_ROOM, 128.0, 2.0, "kick" to 0.8, "loud" to 0.6, "bright" to 0.4, "hat" to -0.4),
+        p(Genre.FUTURE_HOUSE, 125.0, 3.0, "kick" to 0.7, "sub" to 0.4, "bright" to 0.5),
+        p(Genre.AFRO_HOUSE, 121.0, 3.0, "kick" to 0.6, "hat" to 0.6, "tonal" to 0.3, "bright" to -0.3),
+        p(Genre.MELODIC_TECHNO, 123.0, 3.0, "kick" to 0.7, "tonal" to 0.9, "bright" to -0.4, "bb" to -0.3),
+        p(Genre.TECHNO, 132.0, 5.0, "kick" to 0.6, "bb" to -0.5, "tonal" to -0.4, "bright" to -0.3, "ht" to -0.4),
+        p(Genre.HARD_TECHNO, 150.0, 8.0, "kick" to 0.6, "dist" to 0.8, "loud" to 0.4, "ht" to -0.6),
+        p(Genre.MINIMAL, 125.0, 3.0, "kick" to 0.6, "loud" to -0.8, "tonal" to -0.6, "sub" to -0.5),
+        p(Genre.TRANCE, 138.0, 4.0, "kick" to 0.8, "tonal" to 1.0, "off" to 0.8),
+        p(Genre.PSYTRANCE, 143.0, 4.0, "kick" to 0.8, "roll" to 1.2, "off" to 0.4),
+        p(Genre.DUBSTEP, 141.0, 4.0, "ht" to 1.2, "sub" to 0.6, "dist" to 0.6),
+        p(Genre.RIDDIM, 145.0, 6.0, "ht" to 1.0, "dist" to 1.0, "tonal" to -0.5, "hat" to -0.3),
+        p(Genre.DRUM_AND_BASS, 174.0, 6.0, "bb" to 0.4, "hat" to 0.4, "roll" to 0.3),
+        p(Genre.JUNGLE, 165.0, 6.0, "bb" to 0.4, "hat" to 0.6, "loud" to -0.4),
+        p(Genre.BREAKBEAT, 132.0, 9.0, "kick" to -0.6, "hat" to 0.4, "dist" to 0.3),
+        p(Genre.UK_GARAGE, 132.0, 3.0, "kick" to -0.4, "bb" to 0.6, "hat" to 0.4),
+        p(Genre.TRAP, 148.0, 8.0, "ht" to 0.8, "hat" to 0.4, "sub" to 0.6, "dist" to -0.2),
+        p(Genre.FUTURE_BASS, 150.0, 8.0, "ht" to 0.8, "tonal" to 1.0, "bright" to 0.6, "dist" to -0.5),
+        p(Genre.HARDSTYLE, 152.0, 4.0, "kick" to 1.0, "dist" to 1.0, "tonal" to 0.5),
+        p(Genre.HARDCORE, 192.0, 8.0, "kick" to 1.0, "dist" to 1.0, "loud" to 0.4),
+        p(Genre.MOOMBAHTON, 108.0, 4.0, "bb" to 0.6, "sub" to 0.3),
+        p(Genre.AMAPIANO, 113.0, 3.0, "hat" to 0.6, "sub" to 0.6, "tonal" to 0.3),
+        p(Genre.ELECTRO, 128.0, 8.0, "kick" to -0.5, "bb" to 0.6, "bright" to 0.4),
+        p(Genre.SYNTHWAVE, 105.0, 15.0, "bb" to 0.8, "tonal" to 0.8, "bright" to 0.4, "sub" to -0.6),
         p(Genre.DOWNTEMPO, 92.0, 12.0, "loud" to -0.5, "kick" to -0.4, "tonal" to 0.4),
-        p(Genre.AMBIENT, 85.0, 20.0, "loud" to -1.5, "kick" to -1.5, "tonal" to 0.8, "hat" to -1.0),
-        p(Genre.NU_DISCO, 118.0, 4.0, "kick" to 1.2, "bb" to 0.5, "tonal" to 0.5, "bright" to 0.6),
+        p(Genre.AMBIENT, 85.0, 20.0, "loud" to -1.5, "kick" to -1.0, "tonal" to 0.8, "hat" to -1.0),
+        p(Genre.NU_DISCO, 118.0, 4.0, "kick" to 0.7, "bb" to 0.5, "tonal" to 0.5, "bright" to 0.6),
     )
     private val byGenre = profiles.associateBy { it.genre }
 
@@ -53,11 +54,11 @@ object EdmClassifier {
         "bb" to f.backbeat,
         "ht" to f.halfTime,
         "roll" to (f.roll / 0.8).coerceIn(0.0, 1.0),
-        "hat" to (f.hatRate / 3.0).coerceIn(0.0, 1.0),
-        "sub" to (f.subBass / 0.3).coerceIn(0.0, 1.0),
-        "bright" to ((f.centroidHz - 800) / 2500).coerceIn(0.0, 1.0),
-        "dist" to ((f.flatness - 0.05) / 0.3).coerceIn(0.0, 1.0),
-        "loud" to ((f.loudnessDb + 20) / 12).coerceIn(0.0, 1.0),
+        "hat" to (f.hatRate / 3.5).coerceIn(0.0, 1.0),
+        "sub" to ((f.subBass - 0.3) / 0.5).coerceIn(0.0, 1.0),
+        "bright" to ((f.centroidHz - 250) / 900).coerceIn(0.0, 1.0),
+        "dist" to ((f.flatness - 0.1) / 0.2).coerceIn(0.0, 1.0),
+        "loud" to ((f.loudnessDb + 14) / 10).coerceIn(0.0, 1.0),
         "tonal" to f.keyConfidence.coerceIn(0.0, 1.0),
     )
 
@@ -102,7 +103,7 @@ object EdmClassifier {
     fun tempoPlausibility(g: Genre, bpm: Double): Double {
         val pr = byGenre[g] ?: return 1.0
         if (bpm <= 0) return 1.0
-        val z = listOf(bpm, bpm / 2, bpm * 2).minOf { abs(it - pr.bpm) } / (pr.sigma * 1.5 + 3)
+        val z = listOf(bpm, bpm / 2, bpm * 2).minOf { abs(it - pr.bpm) } / (pr.sigma * 2.0 + 6)
         return max(0.05, exp(-0.5 * z * z))
     }
 
@@ -147,6 +148,9 @@ data class GenreVerdict(
 
 /** Combines file tags, online databases and audio analysis into one genre decision. */
 object GenreFusion {
+    /** Head start for electronic genres (a DJ library). */
+    var edmPrior = 1.2
+
     /**
      * Like [decide], but when a confident named source (file tag / database) says a genre whose
      * tempo range only fits a related tempo (×1.5, ×2…), the tempo is corrected first.
@@ -172,7 +176,8 @@ object GenreFusion {
         val reasons = votes.groupBy { it.source }.map { (src, v) -> "$src: ${v.joinToString(", ") { it.raw }.take(60)}" }.toMutableList()
         audio?.let { if (it.bpm > 0) reasons += "Audio: ${EdmClassifier.describe(it)}" }
 
-        var edmScore = votes.filter { it.genre.edm }.sumOf { it.weight }
+        // Cratez is a DJ tool: lean electronic unless named sources clearly say otherwise.
+        var edmScore = votes.filter { it.genre.edm }.sumOf { it.weight } + edmPrior
         var otherScore = votes.filter { !it.genre.edm }.sumOf { it.weight }
         if (edmAudio != null) {
             // Audio evidence matters most when online sources are silent.
@@ -181,7 +186,7 @@ object GenreFusion {
             otherScore += (1 - edmAudio) * w * 0.6
         }
 
-        if (edmScore >= otherScore && (edmScore > 0)) {
+        if (edmScore >= otherScore) {
             val bpm = audio?.bpm ?: 0.0
             val specific = votes.filter { it.genre.edm && !GenreNormalizer.isGenericElectronic(it.genre) }
             val scores = HashMap<Genre, Double>()
@@ -199,7 +204,8 @@ object GenreFusion {
             val familyShare = edmScore / (edmScore + otherScore + 1e-9)
             // Agreement between a named source and the audio is a strong signal.
             val agree = specific.any { it.genre == best.key } && (audioProbs[best.key] ?: 0.0) >= 0.12
-            val conf = ((share * 0.7 + 0.3) * familyShare + if (agree) 0.15 else 0.0).coerceIn(0.05, 0.99)
+            val named = specific.isNotEmpty()
+            val conf = (if (named) (share * 0.7 + 0.3) * familyShare + (if (agree) 0.15 else 0.0) else share * 0.9 + 0.1).coerceIn(0.05, 0.99)
             return GenreVerdict(best.key, conf, reasons, ranked.drop(1).take(4).map { it.key })
         }
 
@@ -211,13 +217,7 @@ object GenreFusion {
             val conf = (ranked[0].value / total * 0.8 * (otherScore / (edmScore + otherScore + 1e-9)) + 0.15).coerceIn(0.05, 0.95)
             return GenreVerdict(ranked[0].key, conf, reasons, ranked.drop(1).take(4).map { it.key })
         }
-        // No metadata and the audio doesn't sound like club music: rough guess only.
-        val guess = when {
-            audio == null || audio.bpm <= 0 -> Genre.OTHER
-            audio.bpm in 78.0..105.0 && audio.backbeat > 0.3 && audio.subBass > 0.12 -> Genre.HIP_HOP
-            audio.loudnessDb < -18 -> Genre.AMBIENT
-            else -> Genre.OTHER
-        }
-        return GenreVerdict(guess, 0.2, reasons, audioProbs.entries.sortedByDescending { it.value }.take(4).map { it.key })
+        // Nothing to go on.
+        return GenreVerdict(Genre.ELECTRONIC, 0.15, reasons, audioProbs.entries.sortedByDescending { it.value }.take(4).map { it.key })
     }
 }

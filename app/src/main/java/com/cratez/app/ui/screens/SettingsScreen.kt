@@ -75,6 +75,9 @@ fun SettingsScreen(vm: AppViewModel) {
             }
             SectionLabel("Library")
             NeonButton("Re-analyze all ${all.size} tracks", icon = Icons.Default.Refresh, modifier = Modifier.fillMaxWidth()) { vm.reanalyzeAll() }
+            NeonButton("Re-sort genres from my library", icon = Icons.Default.Refresh, color = C.Hot, modifier = Modifier.fillMaxWidth()) { vm.resortFromLibrary() }
+            Text("Cratez learns from tracks with trusted genres: store tags (Beatport etc.), folder names, and every genre you fix. Fixing a few in the Review crate teaches it your style.",
+                fontFamily = F.Body, fontSize = 13.sp, color = C.TextDim)
             NeonButton("Clear library", icon = Icons.Default.DeleteForever, color = C.Hot, modifier = Modifier.fillMaxWidth()) { confirmClear = true }
             Text("Clearing only forgets tracks inside Cratez. Your music files are never deleted except from the Dupes tab, and Android asks you first.",
                 fontFamily = F.Body, fontSize = 13.sp, color = C.TextDim)

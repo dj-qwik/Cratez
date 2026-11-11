@@ -147,6 +147,41 @@ object GenreNormalizer {
         return null
     }
 
+    private val hintWords: List<Pair<Regex, Genre>> = listOf(
+        "drumstep|dubstep|brostep|tearout" to Genre.DUBSTEP,
+        "riddim" to Genre.RIDDIM,
+        "dnb|d&b|d ?n ?b|drum ?(and|&|n'?) ?bass|liquid|neurofunk|jump ?up" to Genre.DRUM_AND_BASS,
+        "jungle" to Genre.JUNGLE,
+        "breaks|breakbeat|nu ?skool|florida breaks" to Genre.BREAKBEAT,
+        "future bass" to Genre.FUTURE_BASS,
+        "trap" to Genre.TRAP,
+        "hardstyle|rawstyle" to Genre.HARDSTYLE,
+        "psytrance|psy ?trance" to Genre.PSYTRANCE,
+        "trance" to Genre.TRANCE,
+        "tech ?house" to Genre.TECH_HOUSE,
+        "bass ?house" to Genre.BASS_HOUSE,
+        "deep ?house" to Genre.DEEP_HOUSE,
+        "fidget|electro ?house|complextro" to Genre.ELECTRO_HOUSE,
+        "techno" to Genre.TECHNO,
+        "uk ?garage|ukg|2 ?step|speed garage|bassline" to Genre.UK_GARAGE,
+        "moombah\\w*" to Genre.MOOMBAHTON,
+        "amapiano" to Genre.AMAPIANO,
+        "house" to Genre.HOUSE,
+    ).map { Regex("(?<![a-z])(${it.first})(?![a-z])", RegexOption.IGNORE_CASE) to it.second }
+
+    /**
+     * Genre words in a folder name or file name ("trixx/Dubstep", "Run Da Trap Bootleg",
+     * "Free Breaks Collection"). Only clear EDM style words count.
+     */
+    fun fromHint(text: String?, isFolder: Boolean = false): Genre? {
+        if (text.isNullOrBlank()) return null
+        val t = text.replace('_', ' ')
+        for ((re, g) in hintWords) if (re.containsMatchIn(t)) return g
+        // Folder names like "Electrofidget" can use the looser genre matcher; file names can't
+        // (it would read "Technologic" as techno).
+        return if (isFolder) normalize(t)?.takeIf { it.edm && !isGenericElectronic(it) } else null
+    }
+
     /** Generic labels that only tell us "it's electronic" without naming the style. */
     fun isGenericElectronic(g: Genre) = g == Genre.ELECTRONIC || g == Genre.DANCE_POP
 }
